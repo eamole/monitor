@@ -15,6 +15,7 @@ namespace Monitor
     {
         string filename;
         Db db;
+        Snapshot snapshot;
 
         public Form1()
         {
@@ -77,8 +78,17 @@ namespace Monitor
 
         private void btnConnect_Click(object sender, EventArgs e)
         {
-            db = new Db();
-            db.tablesToJson();
+            // the primary Db has a connection to the snapshot db for timings
+            //db = new Db( null , new Db("E:\\ResMgr\\amdex\\resmanager_snapshot.mdb"));
+            //db.tablesToJson();
+            snapshot = Snapshot.getInstance(Properties.Settings.Default.DatabaseFilename);
+            
+
+        }
+
+        private void ReadAdoDbData_Click(object sender, EventArgs e)
+        {
+            snapshot.fromAdoDb();
         }
     }
 }

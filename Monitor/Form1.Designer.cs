@@ -32,6 +32,7 @@
             this.wb = new System.Windows.Forms.WebBrowser();
             this.btnConnect = new System.Windows.Forms.Button();
             this.btnSelectDatabase = new System.Windows.Forms.Button();
+            this.ReadAdoDbData = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
             // label1
@@ -71,11 +72,22 @@
             this.btnSelectDatabase.UseVisualStyleBackColor = true;
             this.btnSelectDatabase.Click += new System.EventHandler(this.btnSelectDatabase_Click);
             // 
+            // ReadAdoDbData
+            // 
+            this.ReadAdoDbData.Location = new System.Drawing.Point(438, 4);
+            this.ReadAdoDbData.Name = "ReadAdoDbData";
+            this.ReadAdoDbData.Size = new System.Drawing.Size(107, 23);
+            this.ReadAdoDbData.TabIndex = 4;
+            this.ReadAdoDbData.Text = "Read AdoDb Data";
+            this.ReadAdoDbData.UseVisualStyleBackColor = true;
+            this.ReadAdoDbData.Click += new System.EventHandler(this.ReadAdoDbData_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(800, 450);
+            this.Controls.Add(this.ReadAdoDbData);
             this.Controls.Add(this.btnSelectDatabase);
             this.Controls.Add(this.btnConnect);
             this.Controls.Add(this.wb);
@@ -93,6 +105,7 @@
         private System.Windows.Forms.WebBrowser wb;
         private System.Windows.Forms.Button btnConnect;
         private System.Windows.Forms.Button btnSelectDatabase;
+        private System.Windows.Forms.Button ReadAdoDbData;
     }
 }
 
