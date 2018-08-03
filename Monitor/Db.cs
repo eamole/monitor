@@ -149,13 +149,15 @@ namespace Monitor
 
             return reader;
         }
-
-        public DataTable getTables()
+        /*
+         * use a table name to get just one schema
+         */
+        public DataTable getTables(string tableName = null)
         {
             if (!connected) connect();
 
             timing.start();
-            DataTable result = conn.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, new object[] { null, null, null, "TABLE" });
+            DataTable result = conn.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, new object[] { null, null, tableName, "TABLE" });
             timing.stop();
             timing.log("GetDatabaseSchema - TABLES ");
             return result;
@@ -176,7 +178,15 @@ namespace Monitor
         public void update(string tableName, string fields, string values , string where )
         {
             string[] _fields = fields.Split(',');
-            string[] _values = values.Split(',');
+            // this will fuck with function calls and expressions
+            char sep = ',';
+            if (values[0]=='|')
+            {
+                sep = '|';
+                values = values.Substring(1);
+            } 
+            string[] _values = values.Split(sep);
+            
             update(tableName, _fields, _values, where);
         }
         public void update(string tableName, string[] fields, string[] values, string where)
@@ -205,6 +215,26 @@ namespace Monitor
             timing.log(sql);
 
         }
+        public void delete(string tableName, string where = "", bool confirmAll = false)
+        {
+            string _sql = $"DELETE * FROM {tableName} ";
+            if(where.Length==0)
+            {
+                if (!confirmAll)
+                {
+                    Console.WriteLine($"*** SQL Delete table {tableName} : You must confirm All if no where clause specified");
+                    return;
+                } else
+                {
+                    Console.WriteLine($"*** SQL Delete : Warning - deleting all records table : {tableName}");
+                }
+            } else
+            {
+                _sql += $" WHERE {where} ;";
+            }
+            sql(_sql);
+
+        }
         // update if exists, insert if not - where must be key
         public void upsert(string tableName, string fields, string values, string where)
         {
@@ -222,10 +252,36 @@ namespace Monitor
             }
 
         }
+        public string lookup(string table,int id, string field = "name", string idField = "_id" )
+        {
+            string value = "";
+            OleDbDataReader reader = query(table,$"{idField} = {id}");
+            if(reader.HasRows)
+            {
+                reader.Read();
+                value = reader.GetValue(reader.GetOrdinal(field)).ToString();
+            }
+            return value;
+        }
+        public void inc(string table, int id, string field, string idField = "_id")
+        {
+            update(table, field, $"{field}+1", $"idField={id}");
+        }
         public void insert(string tableName , string fields , string values)
         {
             string[] _fields = fields.Split(',');
             fields = String.Join(",",_fields.Select(x => $"[{x}]").ToArray());
+
+            // this will fuck with function calls and expressions
+            char sep = ',';
+            if (values[0] == '|')
+            {
+                sep = '|';
+                values = values.Substring(1);
+            }
+            string[] _values = values.Split(sep);
+            // need to rejoin them!! this is simply for compat with update
+            values = String.Join(",", _values);
 
             string sql = $"INSERT INTO [{tableName}] ({fields}) VALUES ({values})";
             if (!connected) connect();

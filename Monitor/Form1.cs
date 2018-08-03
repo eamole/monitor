@@ -207,5 +207,26 @@ namespace Monitor
             //}
             snapshot.genFieldLists();
         }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            if (tableName != null)
+            {
+                // snapshot.tables[tableName].getNewRecordIds();
+                Table.checkForInserts(tableName);
+                //   Table.genFieldLists(tableName);
+            }
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            //if (tableName != null)
+            //{
+            //    // snapshot.tables[tableName].getNewRecordIds();
+            //    Table.genJson(tableName);
+            //    //   Table.genFieldLists(tableName);
+            //}
+            Queue.loadQueues();
+        }
     }
 }

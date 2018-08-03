@@ -33,6 +33,9 @@ namespace Monitor   // possibly should be Db
         public DateTime created;
         public DateTime updated;
         public int recCount;
+        public string[] fieldLists;
+
+        private int tempCount;  // a storage area
 
         public Dictionary<string, Field> fields;
         
@@ -64,6 +67,22 @@ namespace Monitor   // possibly should be Db
             // get the fields
 
             return table;
+        }
+
+        public bool getLastUpdate()
+        {
+            DataTable schema = App.originalDb.getTables(name);
+            DateTime lastUpdate = DateTime.Parse(schema.Rows[0]["DATE_MODIFIED"].ToString());
+            bool isUpdated = false;
+            if(lastUpdate != updated)
+            {
+                Console.WriteLine($"Table changed (last remembered update : {updated} | latest update (lastUpdate) ");
+                updated = lastUpdate;
+                isUpdated = true;
+                save(false);
+            }
+            return isUpdated;
+
         }
 
         //  moved to Db
@@ -203,8 +222,8 @@ namespace Monitor   // possibly should be Db
             int i = 0;
 
             OleDbDataReader reader = App.snapshot.sql(sql);
-
-            sql = "\"";
+            string delim = "\"";   // use a special char as delim
+            sql = delim;
             bool written=false;
             while (reader.Read())
             {
@@ -227,13 +246,13 @@ namespace Monitor   // possibly should be Db
                 {
                     // break the list
                     // write the field list
-                    sql += "\"";
+                    sql += delim;
                     App.snapshot.upsert("fieldLists", "tableId,ordinal,fieldList",
-                        $"{table.id},{fieldList},{sql}",
+                        $"|{table.id}|{fieldList}|{sql}",
                         $"[tableId]={table.id} AND [ordinal]={fieldList}");
 
                     written = true;
-                    sql = "\"";
+                    sql = delim;
                     i = 0;
                     fieldList++;
                 }
@@ -241,9 +260,9 @@ namespace Monitor   // possibly should be Db
 
             if (!written)
             {     // write last fieldList 
-                sql += "\"";
+                sql += delim;
                 App.snapshot.upsert("fieldLists", "tableId,ordinal,fieldList",
-                $"{table.id},{fieldList},{sql}",
+                $"|{table.id}|{fieldList}|{sql}",
                 $"[tableId]={table.id} AND [ordinal]={fieldList}");
             }
             reader.Close();
@@ -251,6 +270,20 @@ namespace Monitor   // possibly should be Db
             
         }
 
+        public string[] getFieldLists()
+        {
+            Snapshot db = App.snapshot;
+            int count = db.recCount("fieldLists", $"[tableId]={id}");
+            fieldLists = new string[count];
+            OleDbDataReader reader = db.query("fieldLists", $"[tableId]={id}", "ordinal");
+            int i = 0;
+            while (reader.Read())
+            {
+                fieldLists[i++] = reader.GetValue(reader.GetOrdinal("fieldList")).ToString();
+            }
+            return fieldLists;
+        }
+        // no longer used
         public static string getFieldExpression(string tableName)
         {
             Snapshot snapshot = App.snapshot;
@@ -290,33 +323,161 @@ namespace Monitor   // possibly should be Db
              */ 
         } 
 
-        public static void checkForInsertsOld(string tableName) 
+        public int countNewRecords() {
+            string sql = $@"SELECT Count(*) as RecCount FROM [{name}]
+                                WHERE [_id] NOT IN 
+                                   (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
+
+            OleDbDataReader reader = App.snapshot.sql(sql);
+            reader.Read();
+            int count = int.Parse(reader.GetValue(reader.GetOrdinal("RecCount")).ToString());
+            return count;
+        }
+
+        // will return a string with either the ids in an array of a table in clause
+        public string getNewRecordIdsClause()
+        {
+            string clause = "";
+            int count = countNewRecords();
+            tempCount = count;  // so it can be used outside
+            if (count == 0)
+            {
+                return clause;
+            }
+            if(count>App.maxIdArraySize)
+            {
+                clause = getNewRecordIdsTable(count);
+
+            } else
+            {
+                int[] _ids = getNewRecordIdsArray(count);
+                if (_ids == null)
+                {
+                    Console.WriteLine($"Check for Inserts - no NEW records on table {name}");
+                    return clause;
+                }
+                string ids = String.Join(",", _ids);
+
+                clause = $" ({ids}) ";
+                
+            }
+            return clause;
+        }
+        public string getNewRecordIdsTable(int count)
         {
 
-            Table table = App.snapshot.tables[tableName];
-            string op = "i";
-            int statsId = App.snapshot.getNewStats(op,table.id);
+            string sql = $@"INSERT INTO tempIds ([_id]) 
+                               SELECT [_id] AS ID FROM [{name}]
+                                 WHERE [_id] NOT IN 
+                                   (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
+
+            // clear temp file
+            App.snapshot.delete("tempIds", "", true);
+            App.snapshot.sql(sql);
+            string clause = " (SELECT [_id] FROM TempIds) ";
+            return clause;
+        }
+
+        public int[] getNewRecordIdsArray(int count)
+        {
+
+            int[] ids = null;
+            if(count==0)
+            {
+                return ids;
+            }
+
+            string sql = $@"SELECT [_id] AS ID FROM [{name}]
+                                WHERE [_id] NOT IN 
+                                   (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
+
+            OleDbDataReader reader = App.snapshot.sql(sql);
+            if (reader.HasRows)
+            {
+                reader.Read();
+                ids = new int[count];
+                int i = 0;
+                do
+                {
+                    ids[i++] = int.Parse(reader.GetValue(reader.GetOrdinal("ID")).ToString());
+                } while (reader.Read());
+
+            }
+            return ids;
+        }
+
+        public static void checkForInserts(string tableName) 
+        {
 
             Db db = App.snapshot.originalDb;
-            
-            string expr = Table.getFieldExpression(tableName);
-            string sql = $@"INSERT INTO snapshot ([_id],[op],[tableId],[statsId],[value]) 
-                            SELECT [_id],'{op}',{table.id},{statsId},{expr} AS expr FROM [{tableName}] 
-                                WHERE [_id] NOT IN 
-                                    (SELECT [_id] FROM [snapshot] WHERE [tableId] = {table.id} );";
-            Console.WriteLine(sql);
-            try
-            {
-                //OleDbDataReader reader = 
-                App.snapshot.sql(sql);
-                // how many records added?
-                int count = App.snapshot.recCount("snapshot", $"[statsId]={statsId}");
-                App.snapshot.recordStats(statsId, count);
+            Table table = App.snapshot.tables[tableName];
+            string op = "i";
+            //int count = db.recCount($"{table.name}");
 
-            } catch(Exception e)
+            table.getRecCount();
+
+            // an unchanged record count not sufficient. 
+            if(table.recCount == 0)
             {
-                    Console.WriteLine("Error " + e.Message);
+                Console.WriteLine($"Check for Inserts - no records on table {table.name}");
+                return;
             }
+            // check last update v last scan - don't scan if no change since last scan
+            table.getLastUpdate();
+            // if no change
+            if(table.fieldLists==null)
+                table.getFieldLists();
+
+            int statsId = App.snapshot.getNewStats(op, table.id);
+
+            string inClause = table.getNewRecordIdsClause();
+
+            // we have new inserts - get the expressions
+            int i = 0;
+            string sql = "";
+            foreach (string expr in table.fieldLists)
+            {
+                if(i++==0)
+                {
+                    //string expr = Table.getFieldExpression(tableName);
+                    // problem is expr on snapshot needs to be additive, therefore an insert followed by updates
+                    sql = $@"INSERT INTO snapshot ([_id],[op],[tableId],[statsId],[value]) 
+                            SELECT [_id],'{op}',{table.id},{statsId},{expr} AS expr FROM [{tableName}] 
+                                WHERE [_id] IN {inClause};";
+
+                } else
+                {
+                    // lets see if clearing up whitespace helps
+                    sql = $"UPDATE snapshot INNER JOIN [{tableName}] ON [{tableName}].[_id] = [snapshot].[_id]";
+                    sql += $" SET [snapshot].[value] = [snapshot].[value] & {App.fieldListSeparator} & {expr}";
+                    sql += $" WHERE [{tableName}].[_id] IN {inClause};";
+
+
+                }
+
+                Console.WriteLine(sql);
+                try
+                {
+                    //OleDbDataReader reader = 
+                    App.snapshot.sql(sql);
+                    // how many records added? - actually second + passes are techincally updates
+                    // and we know the record count - we got it from _ids
+                    //int newRecords = App.snapshot.recCount("snapshot", $"[statsId]={statsId}");
+                    App.snapshot.recordStats(statsId, table.tempCount);
+
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("Error " + e.Message);
+                }
+
+
+            }
+
+
+            // check if new records
+
+
 
         }
 
@@ -399,10 +560,19 @@ namespace Monitor   // possibly should be Db
             Console.WriteLine("Done");
         }
 
-        public int getRecCount()
+        public bool getRecCount()
         {
-            recCount = db.recCount(name);
-            return recCount;
+            int count = db.recCount(name);
+            bool isUpdated = false;
+            if (count != recCount)
+            {
+                Console.WriteLine($"Table {name} | changed recCount | old : {recCount} | new : {count} ");
+                recCount = count;
+                isUpdated = true;
+                save(false);
+            }
+
+            return isUpdated;
         }
         public void adodbGetFields()
         {
@@ -421,7 +591,7 @@ namespace Monitor   // possibly should be Db
             }
         }
 
-        public void save()
+        public void save(bool saveFields=true)
         {
             // insert into tables if not exists
             string fields = "name,created,updated,recCount";
@@ -449,12 +619,13 @@ namespace Monitor   // possibly should be Db
                 table = load(db, name, this);
 
             }
-
-            foreach(KeyValuePair<string,Field> entry in this.fields)
+            if(saveFields)
             {
-                Field field = entry.Value;
-                field.save();
-
+                foreach (KeyValuePair<string, Field> entry in this.fields)
+                {
+                    Field field = entry.Value;
+                    field.save();
+                }
             }
 
         }
