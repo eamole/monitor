@@ -18,14 +18,14 @@ namespace Monitor
         {
             if (hasDefault) defaultValue = defaultValueString;
             maxLength = int.Parse(row["CHARACTER_MAXIMUM_LENGTH"].ToString());
-
+            isString = true;
         }
 
         public FieldString(Table t, OleDbDataReader reader) : base(t, reader)
         {
             if (hasDefault) defaultValue = defaultValueString;
             maxLength = int.Parse(reader.GetValue(reader.GetOrdinal("maxLength")).ToString());
-
+            isString = true;
         }
 
     }

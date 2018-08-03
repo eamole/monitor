@@ -49,6 +49,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="App.cs" />
     <Compile Include="FieldBoolean.cs" />
     <Compile Include="FieldString.cs" />
     <Compile Include="FieldDateTime.cs" />

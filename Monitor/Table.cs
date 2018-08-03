@@ -6,12 +6,29 @@ using System.Threading.Tasks;
 using System.Data;
 using System.Data.OleDb;
 
+/*
+
+** Error adding _id to Diary : Resultant table not allowed to have more than one AutoNumber field.
+** Error adding _id to Hold_Bookings : Primary key already exists.
+** Error adding _id to invoice_agents : Primary key already exists.
+** Error adding _id to Item_ProductID : Primary key already exists.
+** Error adding _id to Product_Type_Types : Primary key already exists.
+** Error adding _id to product_types : Primary key already exists.
+** Error adding _id to products : Primary key already exists.
+** Error adding _id to Report_Agents : Primary key already exists.
+** Error adding _id to Report_Bookings : Primary key already exists.
+** Error adding _id to report_product_types : Primary key already exists.
+ 
+*/
+
 namespace Monitor   // possibly should be Db
 {
     class Table
     {
         public Db db;
         public int id;
+        public int dbId;
+
         public string name;
         public DateTime created;
         public DateTime updated;
@@ -25,35 +42,371 @@ namespace Monitor   // possibly should be Db
             name = _name;
             fields = new Dictionary<string, Field>();
 
+            db.tables.Add(name, this);
         }
-        public static Table fromSnapshot(Db db,OleDbDataReader reader)
+
+
+        // fromSnapshot
+        public static Table getTable(OleDbDataReader reader)
         {
+            Snapshot db = App.snapshot;
             string tableName = reader.GetValue(reader.GetOrdinal("name")).ToString();
-            Table table = new Table(db, tableName);
+
+            Table table = null;
+            if (db.tables.ContainsKey(tableName))
+                table = db.tables[tableName];
+            else
+                table = new Table(db, tableName);
+
             table.read(reader);
+
+            table.snapshotGetFields();
+            // get the fields
+
             return table;
         }
 
-        public static Table fromAdoDb(Db db,DataRow tableMeta)
+        //  moved to Db
+        public static Table fromAdoDb(DataRow tableMeta)
         {
+            Db db = App.originalDb;
             string tableName = tableMeta["TABLE_NAME"].ToString();
             Table table = new Table(db, tableName);
             table.created = DateTime.Parse(tableMeta["DATE_CREATED"].ToString());
             table.updated = DateTime.Parse(tableMeta["DATE_MODIFIED"].ToString());
 
             table.getRecCount();
-            table.getFieldsAdoDb();
+            table.adodbGetFields();
 
             return table;
         }
+        /*
+         * return fields as a data source
+         */
+        public static DataTable getFields(string tableName)
+        {
+            Snapshot db = App.snapshot;
+            Table table = db.tables[tableName];
+            OleDbDataReader reader = db.query("fields", $" [tableId] = {table.id}", "ordinal");
+            OleDbDataAdapter da = new OleDbDataAdapter(db.cmd);
+            DataTable _fields = new DataTable();
+
+            reader.Close();
+
+            da.Fill(_fields);
+            return _fields;
+        }
+
+        public static DataTable getData(Snapshot snapshot, string tableName)
+        {
+            
+            Db db = snapshot.originalDb;
+            Table table = snapshot.tables[tableName];
+            OleDbDataReader reader = db.query($"[{tableName}]");
+            OleDbDataAdapter da = new OleDbDataAdapter(db.cmd);
+            DataTable data = new DataTable();
+
+            reader.Close();
+
+            da.Fill(data);
+            return data;
+
+        }
+
+        public static DataTable getFieldStats(string tableName)
+        {
+            Snapshot db = App.snapshot;
+            Table table = db.tables[tableName];
+            int batchId = db.getLastBatchId();
+            //reader = db.query("fieldStats", $" [tableId] = {table.id} AND [batchId] = {batchId}");
+            string fields = "fields.tableName, fields.name, fieldStats.dateTime, fieldStats.nulls, fieldStats.recCount";
+            OleDbDataReader reader = db.join(fields, "fields,fieldStats", "fields.id = fieldStats.fieldId", $" [fields.tableId] = {table.id} AND [fieldStats.batchId] = {batchId}","fields.ordinal");
+
+
+            OleDbDataAdapter da = new OleDbDataAdapter(db.cmd);
+            DataTable _fields = new DataTable();
+
+            reader.Close();
+
+            da.Fill(_fields);
+            return _fields;
+
+        }
+
+
+
+
+        public void snapshotGetFields()
+        {
+            OleDbDataReader reader = db.query("fields", $" [tableId] = {id}", "ordinal");
+            while(reader.Read())
+            {
+                Field.fromSnapshot(this, reader);
+            }
+            reader.Close();
+        }
+
+
+        public void insertIdField(Snapshot snapshot)
+        {
+         
+            try
+            {
+                // 
+                string sql = $"ALTER TABLE [{name}] ADD COLUMN [_id] AutoIncrement PRIMARY KEY; ";  // 
+                snapshot.originalDb.sql(sql);
+
+            } catch(Exception e)
+            {
+                Console.WriteLine($"** Error adding _id to {name} : {e.Message}");
+            }
+
+        }
+
+        public static void insertIdField(Snapshot snapshot, string tableName)
+        {
+            Db db = snapshot.originalDb;
+
+            // compute a JSON version of the record?
+            Table table = snapshot.tables[tableName];
+            string sql = $"ALTER TABLE [{tableName}] ADD COLUMN [id] AutoIncrement PRIMARY KEY; ";  // 
+            db.sql(sql);
+
+        }
+
+        public static void deleteIdField(Snapshot snapshot, string tableName)
+        {
+            Db db = snapshot.originalDb;
+
+            // compute a JSON version of the record?
+            Table table = snapshot.tables[tableName];
+            string sql = $"ALTER TABLE [{tableName}] DROP COLUMN [id]";  // 
+            db.sql(sql);
+
+        }
+
+        public static void genFieldLists(string tableName)
+        {
+            Db db = App.snapshot.originalDb;
+
+            Table table = App.snapshot.tables[tableName];
+            int batchId = App.snapshot.getLastBatchId();
+            // I need to view the fields in nulls increasing order - need a join with fieldStats
+            string sql = $@"SELECT fields.*, fieldStats.nulls, 
+                            fieldStats.recCount, fieldStats.batchId
+                            FROM fields 
+                                INNER JOIN fieldStats ON fields.id = fieldStats.fieldId
+                            WHERE (fieldStats.batchId={batchId}) AND ([fields.tableId] = {table.id})
+                            ORDER BY fieldStats.nulls ASC ;";
+
+            int fieldList = 1;
+            int i = 0;
+
+            OleDbDataReader reader = App.snapshot.sql(sql);
+
+            sql = "\"";
+            bool written=false;
+            while (reader.Read())
+            {
+                written = false;
+                Field field = Field.fromSnapshot(table, reader);
+                field.fieldList = fieldList;
+
+                if (i++ > 0) sql += $" & {App.fieldListSeparator} & ";  // 
+                                                                        // if there are no records, return 0 not Null
+                                                                        //sql += $"'{field.name} :' ";
+                if (field.isString)
+                    sql += $" [{field.name}] ";
+                if (field.isNumber)
+                    sql += $" Str( [{field.name}] )";
+                if (field.isDate)
+                    sql += $" Format([{field.name}],'yyyy-mm-dd hh:mm:ss') ";   // ' causes problems in expr string
+                if (field.isBool)
+                    sql += $" [{field.name}] ";
+                if (i == App.maxFieldListSize)
+                {
+                    // break the list
+                    // write the field list
+                    sql += "\"";
+                    App.snapshot.upsert("fieldLists", "tableId,ordinal,fieldList",
+                        $"{table.id},{fieldList},{sql}",
+                        $"[tableId]={table.id} AND [ordinal]={fieldList}");
+
+                    written = true;
+                    sql = "\"";
+                    i = 0;
+                    fieldList++;
+                }
+            }
+
+            if (!written)
+            {     // write last fieldList 
+                sql += "\"";
+                App.snapshot.upsert("fieldLists", "tableId,ordinal,fieldList",
+                $"{table.id},{fieldList},{sql}",
+                $"[tableId]={table.id} AND [ordinal]={fieldList}");
+            }
+            reader.Close();
+            table.save();
+            
+        }
+
+        public static string getFieldExpression(string tableName)
+        {
+            Snapshot snapshot = App.snapshot;
+            Db db = snapshot.originalDb;
+
+            // compute a JSON version of the record?
+            Table table = snapshot.tables[tableName];
+
+            string sql = "";
+            int i = 0;
+            foreach (KeyValuePair<string, Field> entry in table.fields)
+            {
+                Field field = entry.Value;
+                if (i++ > 0) sql += $" & {App.fieldListSeparator} & ";  // 
+                                                       // if there are no records, return 0 not Null
+                                                       //sql += $"'{field.name} :' ";
+                if (field.isString)
+                    sql += $" [{field.name}] ";
+                if (field.isNumber)
+                    sql += $" Str( [{field.name}] )";
+                if (field.isDate)
+                    sql += $" Format([{field.name}],'yyyy-mm-dd hh:mm:ss') ";
+                if (field.isBool)
+                    sql += $" [{field.name}] ";
+                if (i == App.maxFieldListSize) break;
+            }
+            Console.WriteLine(sql);
+            return sql;
+        }
+
+        public static void takeDataSnapshot()
+        {
+            /*
+             * inserts
+             * look for id in 
+             * compute a String version of the record?
+             */ 
+        } 
+
+        public static void checkForInsertsOld(string tableName) 
+        {
+
+            Table table = App.snapshot.tables[tableName];
+            string op = "i";
+            int statsId = App.snapshot.getNewStats(op,table.id);
+
+            Db db = App.snapshot.originalDb;
+            
+            string expr = Table.getFieldExpression(tableName);
+            string sql = $@"INSERT INTO snapshot ([_id],[op],[tableId],[statsId],[value]) 
+                            SELECT [_id],'{op}',{table.id},{statsId},{expr} AS expr FROM [{tableName}] 
+                                WHERE [_id] NOT IN 
+                                    (SELECT [_id] FROM [snapshot] WHERE [tableId] = {table.id} );";
+            Console.WriteLine(sql);
+            try
+            {
+                //OleDbDataReader reader = 
+                App.snapshot.sql(sql);
+                // how many records added?
+                int count = App.snapshot.recCount("snapshot", $"[statsId]={statsId}");
+                App.snapshot.recordStats(statsId, count);
+
+            } catch(Exception e)
+            {
+                    Console.WriteLine("Error " + e.Message);
+            }
+
+        }
+
+        public string computeFieldStatsQuery()
+        {
+            string sql = "SELECT ";
+            int i=0;
+            foreach (KeyValuePair<string,Field> entry in fields)
+            {
+                if (i++ > 0) sql += ","; 
+                Field field = entry.Value;
+                // if there are no records, return 0 not Null
+                string extra="0";
+
+                if (field.isString)
+                    extra = $"IIF([{field.name}]='',1,0)";
+                if (field.isNumber)
+                    extra = $"IIF([{field.name}]=0,1,{extra})";
+                if (field.isDate && field.hasDefault)
+                    extra = $"IIF([{field.name}]=#{field.defaultValueString}#,1,{extra})";
+
+                sql += $"Sum( IIf( [{field.name}] IS NULL , 1, {extra} )) AS [nulls_{field.name}] ";
+                
+                //sql += $"Sum( IsNull(NullIf([{field.name}],'')) AS [nulls_{field.name}] ";
+
+            }
+            sql += $" FROM [{name}] ;";
+            return sql;
+        }
+
+        public void readerDump(OleDbDataReader reader)
+        {
+            while(reader.Read())
+            {
+                for(int i=0;i<reader.FieldCount;i++)
+                {
+                    Console.Write(reader.GetName(i), ":");
+                    Console.WriteLine(reader[i].ToString());
+                }
+            }
+        }
+        
+        
+        
+        
+        
+        /*
+         * reader is null if there are no records - write 0's
+         */
+
+        public void writeFieldStats(int batchId ,OleDbDataReader reader=null)
+        {
+            string sql = "";
+            //if (reader != null)
+            //    readerDump(reader);
+            if (reader !=null) 
+                reader.Read();
+            //sql = $"INSERT INTO [fieldStats] ([batchId],[fieldId],[nulls],[recCount]) VALUES ";
+            int i = 0;
+            foreach (KeyValuePair<string, Field> entry in fields)
+            {
+                if (i++ > 0) sql += ",";    // between values
+                Field field = entry.Value;
+
+                string fieldName = $"nulls_{field.name}";   // no brackets in c# dict lookup
+
+                int nulls = 0;
+                if(reader != null)
+                    nulls = int.Parse(reader.GetValue(reader.GetOrdinal(fieldName)).ToString());
+
+                sql = $"INSERT INTO [fieldStats] ([batchId],[fieldId],[nulls],[recCount]) VALUES ";
+                sql += $"({batchId},{field.id},{nulls},{recCount}) ";
+                // have to run one insert at a time!!
+                db.sql(sql);
+            }
+            // multiple queries not allowed
+            // mutiple values not allowed!!
+            //sql += ";";
+            //db.sql(sql);
+            Console.WriteLine("Done");
+        }
+
         public int getRecCount()
         {
             recCount = db.recCount(name);
             return recCount;
         }
-        public void getFieldsAdoDb()
+        public void adodbGetFields()
         {
-            DataTable _fields = db.adodbGetFields(name);
+            DataTable _fields = db.getFields(name);
             foreach(DataRow row in _fields.Rows)
             {
                 // each row should be a field
@@ -76,7 +429,7 @@ namespace Monitor   // possibly should be Db
             if (id>0)
             {
                 // this is a bound object
-                db.update("tables", fields, values, " id = {id}");
+                db.update("tables", fields, values, $" id = {id}");
 
             } else
             {
@@ -89,7 +442,7 @@ namespace Monitor   // possibly should be Db
                 } else
                 {
                     // need to update
-                    db.update("tables", fields, values, " name = \"{name}\"");
+                    db.update("tables", fields, values, $" name = \"{name}\"");
                     // get the ID
                 }
                 // load the table object into this object

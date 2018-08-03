@@ -24,6 +24,13 @@ namespace Monitor
         public bool isNullable;
         public string description;
 
+        public bool isString=false;
+        public bool isNumber = false;
+        public bool isDate = false;
+        public bool isBool = false;
+
+        public int fieldList = 1;
+
         public Field(Table _table,DataRow row)
         {
             table = _table;
@@ -228,6 +235,11 @@ namespace Monitor
         }
         public void read(OleDbDataReader reader)
         {
+            /*
+             * jaysus - these all fail on NULLs
+             * need a better way of reading records!! Maybe pass an array in of type
+             * bind name of field to property of same name
+             */
             id = int.Parse(reader.GetValue(reader.GetOrdinal("id")).ToString());
             tableId = int.Parse(reader.GetValue(reader.GetOrdinal("tableId")).ToString());
 
@@ -240,6 +252,9 @@ namespace Monitor
             defaultValueString = reader.GetValue(reader.GetOrdinal("defaultValue")).ToString();
             isNullable = bool.Parse(reader.GetValue(reader.GetOrdinal("isNullable")).ToString());
             description = reader.GetValue(reader.GetOrdinal("description")).ToString();
+
+            fieldList = int.Parse(reader.GetValue(reader.GetOrdinal("fieldList")).ToString());
+
         }
         public Field load(Db db, Table table , string fieldName, Field field = null)
         {

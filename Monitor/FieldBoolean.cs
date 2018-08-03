@@ -16,6 +16,7 @@ namespace Monitor
 
         public FieldBoolean(Table t, DataRow row) : base(t, row)
         {
+            isBool = true;
             if (hasDefault) defaultValue = bool.Parse(defaultValueString);
           
         }
@@ -23,6 +24,7 @@ namespace Monitor
 
         public FieldBoolean(Table t, OleDbDataReader reader) : base(t, reader)
         {
+            isBool = true;
             if (hasDefault) defaultValue = bool.Parse(defaultValueString);
 
         }

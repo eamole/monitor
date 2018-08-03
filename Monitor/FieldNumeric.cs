@@ -22,6 +22,7 @@ namespace Monitor
             {
                 decimals = int.Parse(row["NUMERIC_SCALE"].ToString());
             }
+            isNumber = true;
         }
 
         public FieldNumeric(Table t, OleDbDataReader reader) : base(t, reader)
@@ -30,7 +31,7 @@ namespace Monitor
 
             digits = int.Parse(reader.GetValue(reader.GetOrdinal("digits")).ToString());
             decimals = int.Parse(reader.GetValue(reader.GetOrdinal("decimals")).ToString());
-            
+            isNumber = true;
         }
     }
 }

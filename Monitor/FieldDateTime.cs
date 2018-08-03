@@ -14,7 +14,7 @@ namespace Monitor
 
         public FieldDateTime(Table t, DataRow row) : base(t, row)
         {
-
+            isDate = true;
             if (hasDefault)
             {
                 if(defaultValueString == "=Now()")
@@ -38,6 +38,7 @@ namespace Monitor
         public FieldDateTime(Table t, OleDbDataReader reader) : base(t, reader)
         {
 
+            isDate = true;
             if (hasDefault)
             {
                 if (defaultValueString == "=Now()")

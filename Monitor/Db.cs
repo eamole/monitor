@@ -19,13 +19,12 @@ namespace Monitor
         public bool connected;
         public Db log;
         public Timing timing;
+
         public Dictionary<string, Table> tables;
 
         public Db(string _filename = null, Db log = null)
         {
-            if (log != null) this.log = log;
-            timing = new Timing(log);   // log may be null
-
+            setLog(log);
             provider = Properties.Settings.Default.DatabaseProvider;
             if (_filename == null)
             {
@@ -42,12 +41,24 @@ namespace Monitor
             {
                 connStr += $"Jet OLEDB:Database Password={password};";
             }
+            // msaccess doesn't support
+            //connStr += "MultipleActiveResultSets = true;";
             connectionString = connStr;
 
             tables = new Dictionary<string, Table>();
 
         }
+
+        public void setLog(Db log=null)
+        {
+            if (log != null) this.log = log;
+            timing = new Timing(log);   // log may be null
+
+        }
+
+        // destructor
         ~Db() => close();
+
         public void close()
         {
             try
@@ -68,13 +79,62 @@ namespace Monitor
             timing.stop();
             timing.log("connect : " + filename);
         }
+        
+        public OleDbDataReader sql(string sql)
+        {
+            if (!connected) connect();
 
-        public OleDbDataReader query(string table,string where = "")
+            timing.start();
+            cmd = new OleDbCommand(sql, conn);
+
+            OleDbDataReader reader = cmd.ExecuteReader();
+
+            timing.stop();
+            timing.log(sql);
+
+            return reader;
+        }
+
+        public OleDbDataReader join(string fields , string tables, string on, string where = "", string orderBy = "")
+        {
+            string[] _tables = tables.Split(',');
+            string sql = $"SELECT {fields} FROM {_tables[0]} ";
+            sql += $" INNER JOIN {_tables[1]} ";
+            sql += $" ON ( {on} )";
+
+            if (where.Length > 0)
+            {
+                sql += $" WHERE {where} ";
+            }
+            if (orderBy.Length > 0)
+            {
+                sql += $" ORDER BY {orderBy} ";
+            }
+            sql += ";";
+            if (!connected) connect();
+
+            timing.start();
+            cmd = new OleDbCommand(sql, conn);
+
+            OleDbDataReader reader = cmd.ExecuteReader();
+
+            timing.stop();
+            timing.log(sql);
+
+            return reader;
+
+        }
+
+        public OleDbDataReader query(string table,string where = "",string orderBy="")
         {
             string sql = $"SELECT * FROM {table} ";
             if(where.Length>0)
             {
                 sql += $" WHERE {where} ";
+            }
+            if (orderBy.Length > 0)
+            {
+                sql += $" ORDER BY {orderBy} ";
             }
             sql += ";";
             if(!connected) connect();
@@ -90,7 +150,7 @@ namespace Monitor
             return reader;
         }
 
-        public DataTable adodbGetTables()
+        public DataTable getTables()
         {
             if (!connected) connect();
 
@@ -101,14 +161,15 @@ namespace Monitor
             return result;
         }
 
-        public DataTable adodbGetFields(string table)
+        public DataTable getFields(string table)
         {
             if (!connected) connect();
 
             timing.start();
             DataTable result = conn.GetOleDbSchemaTable(OleDbSchemaGuid.Columns, new object[] { null, null, table});
             timing.stop();
-            timing.log($"GetTableSchema - {table} ");
+            if(log.conn.State==ConnectionState.Open)
+                timing.log($"GetTableSchema - {table} ");
             return result;
         }
 
@@ -144,7 +205,23 @@ namespace Monitor
             timing.log(sql);
 
         }
+        // update if exists, insert if not - where must be key
+        public void upsert(string tableName, string fields, string values, string where)
+        {
+            int count = recCount(tableName, where);
+            if(count==0)
+            {
+                insert(tableName, fields, values);
+            } else if(count == 1)
+            {
+                update(tableName, fields, values, where);
+            } else
+            {
+                Console.WriteLine($@"*** Upsert Non Unique Warning. 
+                        {count} Records satsify where clause : {tableName} : WHERE {where} ");
+            }
 
+        }
         public void insert(string tableName , string fields , string values)
         {
             string[] _fields = fields.Split(',');
@@ -160,11 +237,24 @@ namespace Monitor
             timing.log(sql);
         }
 
+        public static Table fromAdoDb(Db db, DataRow tableMeta)
+        {
+            string tableName = tableMeta["TABLE_NAME"].ToString();
+            Table table = new Table(db, tableName);
+            table.created = DateTime.Parse(tableMeta["DATE_CREATED"].ToString());
+            table.updated = DateTime.Parse(tableMeta["DATE_MODIFIED"].ToString());
+
+            table.getRecCount();
+            table.adodbGetFields();
+
+            return table;
+        }
+
         public Dictionary<string,string> tablesToJson()
         {
             Dictionary<string, string> dict = new Dictionary<string, string>();
 
-            DataTable table = adodbGetTables();
+            DataTable table = getTables();
 
             foreach(DataRow row in table.Rows)
             {
@@ -181,9 +271,11 @@ namespace Monitor
             return dict;
         }
 
-        public Int32 recCount(string table)
+        public Int32 recCount(string table,string where="")
         {
-            string sql = $"SELECT COUNT(*) FROM [{table}];";
+            string sql = $"SELECT COUNT(*) FROM [{table}] ";
+            if (where.Length > 0) sql += $" WHERE {where} ";
+            sql += ";";
             if (!connected) connect();
             Int32 result;
             timing.start();
