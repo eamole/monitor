@@ -218,7 +218,7 @@ namespace Monitor
             }
         }
 
-        private void button2_Click(object sender, EventArgs e)
+        private void btnStartMonitor_Click(object sender, EventArgs e)
         {
             //if (tableName != null)
             //{

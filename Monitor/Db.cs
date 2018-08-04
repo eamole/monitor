@@ -18,7 +18,10 @@ namespace Monitor
         public string connectionString;
         public bool connected;
         public Db log;
+        public bool logging = false;
         public Timing timing;
+
+        public int rowsAffected;    // set by commands
 
         public Dictionary<string, Table> tables;
 
@@ -51,7 +54,11 @@ namespace Monitor
 
         public void setLog(Db log=null)
         {
-            if (log != null) this.log = log;
+            if (log != null)
+            {
+                this.log = log;
+                logging = true;
+            }
             timing = new Timing(log);   // log may be null
 
         }
@@ -280,15 +287,51 @@ namespace Monitor
                 values = values.Substring(1);
             }
             string[] _values = values.Split(sep);
+
+            // temp array for params
+            string[] _params = new string[10];
+            int offset = 0; // keep track of param
+            int i = 0;
+            foreach (string value in _values)
+            {
+                if(value[0]==App.sqlStringValueMarker)
+                {
+                    _params[offset] = value.Substring(1); // remove marker
+                    _values[i] = $"@{offset}";
+                    offset++; // only increment when sql found
+                }
+                i++;    // loop counter
+            }
+            int maxOffset = offset;
+            // oh balls would need to convert them back to their original data types so sql can convert them back
+            // I'm only worried about strings, so I'll use placeholders only for strings
+            // in most cases, I'm trying to encode SQL queries!!
+            // maybe use a special syntax such as ^ to denote an sql query string
+            // now use the values with params - use ordinals as placeholders
+            
+            
+            
             // need to rejoin them!! this is simply for compat with update
-            values = String.Join(",", _values);
+            values = String.Join(",", _values); // includes placeholders
+            
+            //values = values.Replace("'", "\""); // escape
 
             string sql = $"INSERT INTO [{tableName}] ({fields}) VALUES ({values})";
             if (!connected) connect();
 
             timing.start();
+            // escaping single quotes
+            //sql = sql.Replace("'", "'''");  // 3 '
+
             cmd = new OleDbCommand(sql, conn);
-            cmd.ExecuteNonQuery();
+            offset = 0;
+            for(offset = 0;offset < maxOffset;offset++)
+            {
+                cmd.Parameters.AddWithValue($"@{offset}", _params[offset]);
+
+            }
+
+            rowsAffected = cmd.ExecuteNonQuery();
             timing.stop();
             timing.log(sql);
         }

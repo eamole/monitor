@@ -35,13 +35,22 @@ namespace Monitor
         {
             return _end.ToString("yyyy-MM-dd HH:mm:ss");    // msaccess can't handle decimals no .fff
         }
-        public void log(string msg)
+        public void log(string query)
         {
-            if (db != null)
+            if (db != null && db.logging)
             {
-                db.insert("timings", "start,end,duration,query", $"#{getStart()}#,#{getEnd()}#,{duration.TotalMilliseconds},'{msg}'");
+                db.logging = false; // stop loggining logs
+                db.insert("timings", "start,end,duration,query", 
+                    $"#{getStart()}#,#{getEnd()}#,{duration.TotalMilliseconds},{App.sqlStringValueMarker}'{query}'");
+                db.logging = true;
+
+            } else
+            {
+                query += "  - not logged";
             }
-            Console.WriteLine($"start : { getStart()} , end : { getEnd() }, duration : { duration.TotalMilliseconds}, query : \"{msg}\" ");
+            // don't output the logging queries
+            if(! query.StartsWith("INSERT INTO [timings]"))
+                Console.WriteLine($"duration : { duration.TotalMilliseconds}, query : \"{query}\" ");
 
         }
             

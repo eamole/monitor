@@ -12,7 +12,9 @@ namespace Monitor
     class Snapshot : Db
     {
         public Db originalDb;
-        
+        public string originalFileName;
+        public string snapshotFileName;
+
         public static Snapshot getInstance(string filename)
         {
             // need to extract the mdb first from filename
@@ -30,10 +32,22 @@ namespace Monitor
              * the snapshot class is bound to the snapshot database - no log
              * the snapshot also contains the original database, and acts as the logging database for it
              */
-            
-            originalDb = new Db(originalFileName, this);
+            this.originalFileName = originalFileName;
+            this.snapshotFileName = snapshotFileName;
 
+            originalDb = new Db(originalFileName, this);
+            connect();  // avoid looping issues with log
+           
             
+        }
+        // for some reason not being called
+        new public void connect()
+        {
+            base.connect();
+            // after we've connected, set the log
+            // do not log to same Database object!!
+            Db _log = new Db(snapshotFileName);   // no log
+            setLog(_log);
         }
 
         public void fromAdoDb()
@@ -58,6 +72,9 @@ namespace Monitor
         public DataTable fromSnapshot()
         {
             OleDbDataReader  reader = query("tables");
+
+
+
             OleDbCommand tmp = cmd;
             while(reader.Read())
             {
@@ -65,10 +82,11 @@ namespace Monitor
             }
             reader.Close(); // need to close this reader first - why? is this two queries?
 
-            OleDbDataAdapter da = new OleDbDataAdapter(tmp);
+            OleDbDataAdapter da = new OleDbDataAdapter(cmd);
             DataTable _tables = new DataTable();
 
             da.Fill(_tables);
+
             return _tables;
         }
 

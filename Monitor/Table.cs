@@ -35,7 +35,7 @@ namespace Monitor   // possibly should be Db
         public int recCount;
         public string[] fieldLists;
 
-        private int tempCount;  // a storage area
+        public int insertedRecordCount;  // a storage area for a recCount when checking for new recrods
 
         public Dictionary<string, Field> fields;
         
@@ -339,7 +339,7 @@ namespace Monitor   // possibly should be Db
         {
             string clause = "";
             int count = countNewRecords();
-            tempCount = count;  // so it can be used outside
+            insertedRecordCount = count;  // so it can be used outside
             if (count == 0)
             {
                 return clause;
@@ -431,7 +431,11 @@ namespace Monitor   // possibly should be Db
             int statsId = App.snapshot.getNewStats(op, table.id);
 
             string inClause = table.getNewRecordIdsClause();
-
+            if (table.insertedRecordCount == 0)   // set by getNewRecordCount 
+            {
+                Console.WriteLine($"Check for Inserts - no NEW records on table {table.name}");
+                return;
+            }
             // we have new inserts - get the expressions
             int i = 0;
             string sql = "";
@@ -463,7 +467,7 @@ namespace Monitor   // possibly should be Db
                     // how many records added? - actually second + passes are techincally updates
                     // and we know the record count - we got it from _ids
                     //int newRecords = App.snapshot.recCount("snapshot", $"[statsId]={statsId}");
-                    App.snapshot.recordStats(statsId, table.tempCount);
+                    App.snapshot.recordStats(statsId, table.insertedRecordCount);
 
                 }
                 catch (Exception e)
