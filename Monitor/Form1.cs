@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Data.OleDb;
+using System.Globalization;
 
 namespace Monitor
 {
@@ -23,6 +24,7 @@ namespace Monitor
         public Form1()
         {
             InitializeComponent();
+
 
             filename = Properties.Settings.Default.DatabaseFilename;
             Connect();

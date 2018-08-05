@@ -18,7 +18,7 @@ namespace Monitor
         public string connectionString;
         public bool connected;
         public Db log;
-        public bool logging = false;
+        public bool logging = true;
         public Timing timing;
 
         public int rowsAffected;    // set by commands
@@ -217,7 +217,9 @@ namespace Monitor
 
             timing.start();
             cmd = new OleDbCommand(sql, conn);
+            App.log("exec query " + sql);
             cmd.ExecuteNonQuery();
+            App.log("done");
             timing.stop();
             timing.log(sql);
 
@@ -274,10 +276,59 @@ namespace Monitor
         {
             update(table, field, $"{field}+1", $"idField={id}");
         }
+        /*
+         * string of fileds with an array of values
+         */
+        public void insert(string tableName, string fields, object[] values)
+        {
+            insert(tableName, fields.Split(','), values);
+        }
+        public void insert(string tableName, string[] fields, object[] values)
+        {
+
+            string _fields = String.Join(",", fields);
+            string _values = "";
+            for (int i=0;i<values.Length;i++)
+            {
+                if (i > 0) _values += ",";
+                _values += $"@"+fields[i];      // param placeholders
+            }
+
+            string sql = $"INSERT INTO [{tableName}] ({_fields}) VALUES ({_values})";
+
+            if (!connected) connect();
+            cmd = new OleDbCommand(sql, conn);
+            // add the params
+            int _i = 0;
+            foreach(object value in values) { 
+                cmd.Parameters.AddWithValue($"@"+fields[_i], values[_i]);
+                _i++;
+            }
+
+            rowsAffected = cmd.ExecuteNonQuery();
+            timing.stop();
+            timing.log(sql);
+
+        }
         public void insert(string tableName , string fields , string values)
         {
             string[] _fields = fields.Split(',');
             fields = String.Join(",",_fields.Select(x => $"[{x}]").ToArray());
+
+            // another kludge for sql strings - 
+            // I'll assume 1 delimited by a special pair of chars - like sql dates
+            // ~sql~
+            // split string BEFORE break into commas
+            var hasSql = false;
+            var sqlQuery = "";
+            if (values.Contains(App.sqlStringValueDelim))
+            {
+                hasSql = true;
+                string[] temp = values.Split(App.sqlStringValueDelim);
+                    // assuming 1 sql strung only, so 3 parts
+                values = temp[0] + "@sql" + temp[2];
+                sqlQuery = temp[1];
+            }
 
             // this will fuck with function calls and expressions
             char sep = ',';
@@ -286,7 +337,13 @@ namespace Monitor
                 sep = '|';
                 values = values.Substring(1);
             }
+
+            // now we can split the values on , without worrying about 's in sql strings
+            // damn - I coulda used the | hack I wrote earlier!!
             string[] _values = values.Split(sep);
+
+
+
 
             // temp array for params
             string[] _params = new string[10];
@@ -329,6 +386,11 @@ namespace Monitor
             {
                 cmd.Parameters.AddWithValue($"@{offset}", _params[offset]);
 
+            }
+            if (hasSql)
+            {
+
+                cmd.Parameters.AddWithValue($"@sql", sqlQuery);
             }
 
             rowsAffected = cmd.ExecuteNonQuery();

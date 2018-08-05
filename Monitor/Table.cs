@@ -74,12 +74,16 @@ namespace Monitor   // possibly should be Db
             DataTable schema = App.originalDb.getTables(name);
             DateTime lastUpdate = DateTime.Parse(schema.Rows[0]["DATE_MODIFIED"].ToString());
             bool isUpdated = false;
-            if(lastUpdate != updated)
+            TimeSpan t = lastUpdate - updated;
+            if(!lastUpdate.Equals(updated))
             {
-                Console.WriteLine($"Table changed (last remembered update : {updated} | latest update (lastUpdate) ");
+                App.log($"Table changed (last remembered update : {updated} | latest update ({lastUpdate}) ");
                 updated = lastUpdate;
                 isUpdated = true;
                 save(false);
+            } else
+            {
+                App.log("no changes based on table lupdate date");
             }
             return isUpdated;
 
@@ -324,13 +328,15 @@ namespace Monitor   // possibly should be Db
         } 
 
         public int countNewRecords() {
+            App.log("Getting new record count for " + name);
             string sql = $@"SELECT Count(*) as RecCount FROM [{name}]
-                                WHERE [_id] NOT IN 
+                                WHERE [{name}].[_id] NOT IN 
                                    (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
 
             OleDbDataReader reader = App.snapshot.sql(sql);
             reader.Read();
             int count = int.Parse(reader.GetValue(reader.GetOrdinal("RecCount")).ToString());
+            App.log("done. Count : " + count);
             return count;
         }
 
@@ -419,13 +425,20 @@ namespace Monitor   // possibly should be Db
             // an unchanged record count not sufficient. 
             if(table.recCount == 0)
             {
-                Console.WriteLine($"Check for Inserts - no records on table {table.name}");
+                App.log($"Check for Inserts - no records on table {table.name}");
                 return;
             }
             // check last update v last scan - don't scan if no change since last scan
-            table.getLastUpdate();
+            if(!table.getLastUpdate())
+            {
+                App.log($"Check for Inserts - no updates based on date {table.name}");
+                return;
+            }
             // if no change
-            if(table.fieldLists==null)
+
+
+
+            if (table.fieldLists==null)
                 table.getFieldLists();
 
             int statsId = App.snapshot.getNewStats(op, table.id);
@@ -459,7 +472,7 @@ namespace Monitor   // possibly should be Db
 
                 }
 
-                Console.WriteLine(sql);
+                //Console.WriteLine(sql);
                 try
                 {
                     //OleDbDataReader reader = 

@@ -25,7 +25,7 @@ namespace Monitor
         public static void loadQueues()
         {
             queues = new Dictionary<int, Queue>();
-
+            App.log("load  queues");
             OleDbDataReader reader = App.snapshot.query("queues", "", "priority");
             while(reader.Read())
             {
@@ -48,42 +48,65 @@ namespace Monitor
         }
         private void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
         {
-            Console.WriteLine("The Elapsed event was raised at {0}", e.SignalTime);
-            start();
+            App.log("queue wakeup " + e.SignalTime);
+            
+            next();
         }
         public void start()
         {
+            App.log("Queue Startup");
+
+            App.log("wait for delay before starting queue processing");
+            timer.Start();
+
+        }
+
+        public void next()
+        {
+            App.log("next file");
             // load the next file
-            string table = "tables"; 
+            string table = "tables";
             string where = $"queueId={id} and queueRun<{queueRun}";
-            int count = App.snapshot.recCount(table,where) ;
-            if(count==0)
+            int count = App.snapshot.recCount(table, where);
+            if (count == 0)
             {
+                App.log("queue processed/empty, next queue run");
                 // next run
                 queueRun++;
                 where = $"queueId={id} and queueRun<{queueRun}";
                 save();
             }
-
-            OleDbDataReader reader = App.snapshot.query(table,where,"priority");
-            if(reader.HasRows)
+            // sort by high numbers first - by default tables will by 0
+            OleDbDataReader reader = App.snapshot.query(table, where, "priority DESC");
+            if (reader.HasRows)
             {
                 // still jobs in queue
-                reader.Read();
+                App.log("jobs in queue");
+
+                reader.Read();  // load the table details
                 // change back to tableId when using queueTables
                 int tableId = int.Parse(reader.GetValue(reader.GetOrdinal("id")).ToString());
                 //string tableName = App.snapshot.lookup("tables", tableId,null,"id");
                 string tableName = reader.GetValue(reader.GetOrdinal("name")).ToString();
+                reader.Close(); // 
 
+
+                App.log("look for inserts " + tableName);
                 Table.checkForInserts(tableName);
-                // only on success
-                App.snapshot.update(table, "queueRun", $"{queueRun}", $"queueId={id}");
 
+                // only on success
+                App.log("move this table to next run");
+                // TODO change to tableid qhen using queueTables
+                // starnge I didn't get a query error on tableId I think tableId has meaning in msaccess!! It just hung!!
+                App.snapshot.update(table, "queueRun", $"{queueRun}", $"queueId={id} AND id={tableId}");
+
+                App.log("queue pause");
                 // **** now set the wait
                 timer.Start();
             }
             else
             {
+                App.log("looks like no tables in this queue at all");
                 // guessing an empty queue!!
             }
 

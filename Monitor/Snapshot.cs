@@ -35,7 +35,10 @@ namespace Monitor
             this.originalFileName = originalFileName;
             this.snapshotFileName = snapshotFileName;
 
-            originalDb = new Db(originalFileName, this);
+            App.logger = new Db(snapshotFileName);   // no log
+            setLog(App.logger); // log snapshot queries
+
+            originalDb = new Db(originalFileName,App.logger);   // log Db queries
             connect();  // avoid looping issues with log
            
             
@@ -46,8 +49,6 @@ namespace Monitor
             base.connect();
             // after we've connected, set the log
             // do not log to same Database object!!
-            Db _log = new Db(snapshotFileName);   // no log
-            setLog(_log);
         }
 
         public void fromAdoDb()

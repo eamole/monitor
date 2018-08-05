@@ -40,8 +40,20 @@ namespace Monitor
             if (db != null && db.logging)
             {
                 db.logging = false; // stop loggining logs
-                db.insert("timings", "start,end,duration,query", 
-                    $"#{getStart()}#,#{getEnd()}#,{duration.TotalMilliseconds},{App.sqlStringValueMarker}'{query}'");
+                //db.insert("timings", "start,end,duration,query", 
+                //    new object[]
+                //    {
+                //        _start ,_end,duration.TotalMilliseconds,query
+                //    }
+                //);
+                query = query.Replace("\r\n", " "); // get rid of new lines
+                db.insert("timings", "start,end,duration,query",
+                        $@"#{getStart()}#,
+                            #{getEnd()}#,
+                            {duration.TotalMilliseconds},
+                            {App.sqlStringValueDelim}{query}{App.sqlStringValueDelim}"
+                );
+
                 db.logging = true;
 
             } else
