@@ -50,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="App.cs" />
+    <Compile Include="Query.cs" />
     <Compile Include="Queue.cs" />
     <Compile Include="FieldBoolean.cs" />
     <Compile Include="FieldString.cs" />

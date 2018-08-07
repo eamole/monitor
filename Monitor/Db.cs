@@ -166,7 +166,7 @@ namespace Monitor
             timing.start();
             DataTable result = conn.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, new object[] { null, null, tableName, "TABLE" });
             timing.stop();
-            timing.log("GetDatabaseSchema - TABLES ");
+            timing.log($"GetDatabaseSchema - TABLE {tableName} ");
             return result;
         }
 
@@ -178,7 +178,7 @@ namespace Monitor
             DataTable result = conn.GetOleDbSchemaTable(OleDbSchemaGuid.Columns, new object[] { null, null, table});
             timing.stop();
             if(log.conn.State==ConnectionState.Open)
-                timing.log($"GetTableSchema - {table} ");
+                timing.log($"GetTableSchema - FIELDS {table} ");
             return result;
         }
 
@@ -218,7 +218,7 @@ namespace Monitor
             timing.start();
             cmd = new OleDbCommand(sql, conn);
             App.log("exec query " + sql);
-            cmd.ExecuteNonQuery();
+            rowsAffected = cmd.ExecuteNonQuery();
             App.log("done");
             timing.stop();
             timing.log(sql);
@@ -226,7 +226,7 @@ namespace Monitor
         }
         public void delete(string tableName, string where = "", bool confirmAll = false)
         {
-            string _sql = $"DELETE * FROM {tableName} ";
+            string sql = $"DELETE * FROM {tableName} ";
             if(where.Length==0)
             {
                 if (!confirmAll)
@@ -239,9 +239,19 @@ namespace Monitor
                 }
             } else
             {
-                _sql += $" WHERE {where} ;";
+                sql += $" WHERE {where} ;";
             }
-            sql(_sql);
+
+            if (!connected) connect();
+
+            timing.start();
+            cmd = new OleDbCommand(sql, conn);
+            App.log("delete query " + sql);
+            rowsAffected = cmd.ExecuteNonQuery();
+            App.log("done");
+            timing.stop();
+            timing.log(sql);
+
 
         }
         // update if exists, insert if not - where must be key

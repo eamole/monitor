@@ -33,7 +33,10 @@ namespace Monitor   // possibly should be Db
         public DateTime created;
         public DateTime updated;
         public int recCount;
+        // TODO : need the ID as well - should maybe create an FieldList object with ID and the actual list
         public string[] fieldLists;
+        public int[] fieldListIds;  // hack
+
 
         public int insertedRecordCount;  // a storage area for a recCount when checking for new recrods
 
@@ -279,11 +282,13 @@ namespace Monitor   // possibly should be Db
             Snapshot db = App.snapshot;
             int count = db.recCount("fieldLists", $"[tableId]={id}");
             fieldLists = new string[count];
+            fieldListIds = new int[count];
             OleDbDataReader reader = db.query("fieldLists", $"[tableId]={id}", "ordinal");
             int i = 0;
             while (reader.Read())
             {
-                fieldLists[i++] = reader.GetValue(reader.GetOrdinal("fieldList")).ToString();
+                fieldLists[i] = reader.GetValue(reader.GetOrdinal("fieldList")).ToString();
+                fieldListIds[i++] = int.Parse(reader.GetValue(reader.GetOrdinal("id")).ToString());
             }
             return fieldLists;
         }
@@ -411,7 +416,10 @@ namespace Monitor   // possibly should be Db
             }
             return ids;
         }
-
+        /*
+         * change so that snapshotValues holds the actual data - 1 rec pre fieldlist
+         * this makes updates eaaier to detect
+         */
         public static void checkForInserts(string tableName) 
         {
 
@@ -429,11 +437,11 @@ namespace Monitor   // possibly should be Db
                 return;
             }
             // check last update v last scan - don't scan if no change since last scan
-            if(!table.getLastUpdate())
-            {
-                App.log($"Check for Inserts - no updates based on date {table.name}");
-                return;
-            }
+            //if(!table.getLastUpdate())
+            //{
+            //    App.log($"Check for Inserts - no updates based on date {table.name}");
+            //    return;
+            //}
             // if no change
 
 
@@ -454,23 +462,16 @@ namespace Monitor   // possibly should be Db
             string sql = "";
             foreach (string expr in table.fieldLists)
             {
-                if(i++==0)
-                {
-                    //string expr = Table.getFieldExpression(tableName);
-                    // problem is expr on snapshot needs to be additive, therefore an insert followed by updates
-                    sql = $@"INSERT INTO snapshot ([_id],[op],[tableId],[statsId],[value]) 
-                            SELECT [_id],'{op}',{table.id},{statsId},{expr} AS expr FROM [{tableName}] 
+                int fieldListId = table.fieldListIds[i];
+                // 2 - use a snapshotValues table - and insert into a join - record per fieldlist
+                // can't insert into a JOIN, but by updating, can auto create records!!
+                // UPDATE snapshot 
+                // INNER JOIN snapshotValues ON snapshotValues.snapshotId = snapshotId
+                sql = $@"INSERT INTO qrySnapshotJoin 
+                            ([_id],snapshotValues.op,[tableId],[statsId],[fieldlistId],[ordinal],[current])
+                            SELECT [_id],'{op}',{table.id},{statsId},{fieldListId},{i+1},{expr} AS expr FROM [{tableName}] 
                                 WHERE [_id] IN {inClause};";
 
-                } else
-                {
-                    // lets see if clearing up whitespace helps
-                    sql = $"UPDATE snapshot INNER JOIN [{tableName}] ON [{tableName}].[_id] = [snapshot].[_id]";
-                    sql += $" SET [snapshot].[value] = [snapshot].[value] & {App.fieldListSeparator} & {expr}";
-                    sql += $" WHERE [{tableName}].[_id] IN {inClause};";
-
-
-                }
 
                 //Console.WriteLine(sql);
                 try
@@ -486,15 +487,11 @@ namespace Monitor   // possibly should be Db
                 catch (Exception e)
                 {
                     Console.WriteLine("Error " + e.Message);
+                    App.log(sql);
                 }
 
-
+                i++;    //next field list
             }
-
-
-            // check if new records
-
-
 
         }
 
@@ -579,7 +576,7 @@ namespace Monitor   // possibly should be Db
 
         public bool getRecCount()
         {
-            int count = db.recCount(name);
+            int count = App.originalDb.recCount(name);
             bool isUpdated = false;
             if (count != recCount)
             {
@@ -593,7 +590,7 @@ namespace Monitor   // possibly should be Db
         }
         public void adodbGetFields()
         {
-            DataTable _fields = db.getFields(name);
+            DataTable _fields = App.originalDb.getFields(name);
             foreach(DataRow row in _fields.Rows)
             {
                 // each row should be a field
@@ -669,5 +666,6 @@ namespace Monitor   // possibly should be Db
             }
             return table;
         }
-    }
-}
+
+     }
+ }

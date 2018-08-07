@@ -8,10 +8,11 @@ namespace Monitor
 {
     class Timing
     {
-        DateTime _start;
-        DateTime _end;
-        TimeSpan duration;
-        Db db;
+        public DateTime _start;
+        public DateTime _end;
+        public TimeSpan duration;
+        public Db db;
+
         public Timing(Db db)
         {
             this.db = db;
