@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Data.OleDb;
 using System.Globalization;
+using System.Timers;
 
 namespace Monitor
 {
@@ -17,6 +18,7 @@ namespace Monitor
         string filename;
         Db db;
         Snapshot snapshot;
+        System.Timers.Timer timer;
 
         string tableName;
         DataTable tableData;
@@ -99,9 +101,24 @@ namespace Monitor
 
             App.snapshotDb = snapshot;
             App.originalDb = db;
-            
-            dgvTables.DataSource = snapshot.fromSnapshot();
 
+            dgvTables.DataSource = snapshot.fromSnapshot();
+            //dgvTables.DataSource = snapshot.boundTables();
+
+            //timer = new System.Timers.Timer(5 * App.queryTimerInterval);
+            //timer.Elapsed += OnTimedEvent;
+            //timer.AutoReset = true;
+            //timer.Start();
+
+        }
+
+        private void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
+        {
+            App.log("refresh Tables");
+            // this is throwing an error
+            // dgvTables.Refresh();
+            dgvTables.DataSource = snapshot.fromSnapshot();
+            dgvTables.Update();
         }
 
         private void ReadAdoDbData_Click(object sender, EventArgs e)

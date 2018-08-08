@@ -84,6 +84,9 @@ namespace Monitor
                 App.log("jobs in queue");
 
                 reader.Read();  // load the table details
+
+                string sql;
+                
                 // change back to tableId when using queueTables
                 int tableId = int.Parse(reader.GetValue(reader.GetOrdinal("id")).ToString());
                 //string tableName = App.snapshot.lookup("tables", tableId,null,"id");
@@ -93,11 +96,14 @@ namespace Monitor
                 Table table = App.allDb.tables[tableName];
                 // once per pass
                 table.getRecCount();
-
+                // need to retain the query objects
                 App.log("look for updates " + tableName);
-                Table.checkForUpdates(tableName);
-
+                Table.checkForUpdates(tableName);                
+                
                 App.log("look for inserts " + tableName);
+                Table.checkForInserts(tableName);
+
+                App.log("look for deletes " + tableName);
                 Table.checkForInserts(tableName);
 
                 // only on success

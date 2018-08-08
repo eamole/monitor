@@ -13,7 +13,7 @@ namespace Monitor
         public static int queryTimerInterval = 3000; // ms only for long running queries
         public static int queryMaxRunTime = 10*1000; // 30 seconds ms only for long running queries
         public static int queryMaxRetries = 2;      // max number of times a query is rerun, before being blocked
-
+        public static bool useTableLastUpdateInQueries = false;
         public static int maxFieldListSize = 30;
         public static int maxIdArraySize = 500;
         public static string fieldListSeparator = "chr(124)";   // its a sql function

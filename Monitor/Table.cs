@@ -79,6 +79,7 @@ namespace Monitor   // possibly should be Db
 
         public bool getLastUpdate(bool willSave = true)
         {
+            // TODO : originalDb not updated via UI edits
             DataTable schema = App.originalDb.getTables(name);
             DateTime lastUpdate = DateTime.Parse(schema.Rows[0]["DATE_MODIFIED"].ToString());
             TimeSpan t = lastUpdate - updated;
@@ -442,6 +443,80 @@ namespace Monitor   // possibly should be Db
             return ids;
         }
 
+        public static Query checkForDeletes(string tableName)
+        {
+
+            Db db = App.allDb;
+            Table table = App.snapshotDb.tables[tableName];
+            string op = "d";
+            //int count = db.recCount($"{table.name}");
+
+
+            // an unchanged record count not sufficient.
+            // deletes may be why count is 0!!
+            //if (table.recCount == 0)
+            //{
+            //    App.log($"Check for Deletes - no records on table {table.name}");
+            //    return;
+            //}
+            // check last update v last scan - don't scan if no change since last scan
+            if (App.useTableLastUpdateInQueries && !table.updatedChanged)
+            {
+                App.log($"Check for Deletes - no updates based on date {table.name}");
+                return null;
+            }
+            // if no change
+
+
+            if (table.fieldLists == null)
+                table.getFieldLists();
+
+            int statsId = App.allDb.getNewStats(op, table.id);
+
+            int i = 0;
+            string sql = "";
+            // no need to update snapshotValues
+            //foreach (string expr in table.fieldLists)
+            //{
+            //    int fieldListId = table.fieldListIds[i];
+                // now update the snapshotValues
+                sql = $@"UPDATE [{table.name}] AS lhs 
+                                RIGHT JOIN 
+                                   (SELECT snapshot.[_id],snapshot.[op] as op1,snapshot.[statsId],sv.[op] as op2,sv.snapshotId FROM snapshot
+                                        RIGHT JOIN snapshotValues AS sv
+                                            ON snapshot.id = sv.snapshotId
+                                        WHERE [snapshot].[tableId] = {table.id} AND op1 <> 'd' 
+                                    ) AS snapshot
+                                ON lhs.[_id] = [snapshot].[_id]
+                             SET 
+                                snapshot.[op1] = 'd',
+                                snapshot.[op2] = 'd',
+                                snapshot.[statsId] = {statsId}
+                             WHERE 
+                                lhs.[_id] IS NULL
+                                ";
+
+                Query query = App.allDb.run(sql);
+                
+                query.rowsAffected = db.recCount("snapshot", $"statsId = {statsId}");
+
+                sql = $@"INSERT INTO queueStats 
+                            ([tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
+                           VALUES
+                            ({table.id},'d',{statsId},#{query.getStart()}#,#{query.getEnd()}#,
+                                {query.getDuration()},{query.rowsAffected},{table.recCount},'{query.errorMsg}')
+                    ;";
+
+                db.sql(sql);    // I really don't want to log this!!
+
+            //    i++;    //next field list
+            //}
+            return query;
+
+        }
+
+
+
         public static void checkForUpdates(string tableName)
         {
 
@@ -455,13 +530,13 @@ namespace Monitor   // possibly should be Db
             if (table.recCount == 0)
             {
                 App.log($"Check for Updates - no records on table {table.name}");
-                return;
+                return ;
             }
             // check last update v last scan - don't scan if no change since last scan
-            if(!table.updatedChanged)
+            if(App.useTableLastUpdateInQueries && !table.updatedChanged)
             {
                 App.log($"Check for Updates - no updates based on date {table.name}");
-                return;
+                return ;
             }
             // if no change
 
@@ -470,39 +545,54 @@ namespace Monitor   // possibly should be Db
                 table.getFieldLists();
 
             int statsId = App.allDb.getNewStats(op, table.id);
-
-            // we have new inserts - get the expressions
+            Timing timing = new Timing(db);
+            string errMsg = "";
             int i = 0;
             string sql = "";
             foreach (string expr in table.fieldLists)
             {
                 int fieldListId = table.fieldListIds[i];
                 // now update the snapshotValues
-                sql = $@"UPDATE [{table.name}] AS lhs 
-                                LEFT JOIN 
-                                   (SELECT snapshot.id,snapshot.[_id],sv.[op],sv.snapshotId,sv.[fieldListId],sv.[ordinal],sv.[current] FROM snapshot
-                                        LEFT JOIN snapshotValues AS sv
-                                            ON snapshot.id = sv.snapshotId
-                                        WHERE [snapshot].[tableId] = {table.id} 
-                                    ) AS snapshot
-                                ON lhs.[_id] = [snapshot].[_id]
-                             SET 
-                                snapshot.snapshotId=snapshot.id,
-                                snapshot.[op] = 'i',
-                                snapshot.[fieldListId] = {fieldListId},
-                                snapshot.[ordinal] = {i + 1},
-                                snapshot.[old]=snapshot.[value],
-                                snapshot.[current] = {expr}
+                // break into 2 queries - its generating lots of unnecessary records
+
+                sql = $@"UPDATE [{table.name}] AS lhs
+                            LEFT JOIN 
+                                ( SELECT * FROM snapshotValues 
+                                    WHERE [fieldlistId] = {fieldListId} 
+                                ) as sv
+                            ON 
+                                lhs.[_id] = sv.[_id]
+                            SET
+                                sv.[_id]  = lhs.[_id],
+                                sv.[statsId] = {statsId},
+                                sv.[op] = 'u',
+                                sv.[tableId] = {table.id},
+                                sv.[ordinal] = {i + 1},
+                                sv.[fieldListId] = {fieldListId},
+                                sv.[old]=sv.[current],
+                                sv.[current] = {expr}
                              WHERE 
-                                snapshot.[current] <> {expr}
-                                ";
-
-                App.allDb.run(sql);
+                                sv.[current] <> {expr} OR sv.[current] IS NULL
+                         ";
 
 
+                Query query = App.allDb.run(sql);
+                errMsg += query.errorMsg;
 
                 i++;    //next field list
             }
+            timing.stop();
+            int rowsAffected = db.recCount("snapshotValues", $"statsId = {statsId}");
+            App.log("update stats");
+            sql = $@"INSERT INTO queueStats 
+                            ([tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
+                           VALUES
+                            ({table.id},'u',{statsId},#{timing.getStart()}#,#{timing.getEnd()}#,
+                                {timing.getDuration()},{rowsAffected},{table.recCount},'{errMsg}')
+                    ;";
+
+            db.sql(sql);    // I really don't want to log this!!
+
 
         }
 
@@ -526,13 +616,13 @@ namespace Monitor   // possibly should be Db
             if(table.recCount == 0)
             {
                 App.log($"Check for Inserts - no records on table {table.name}");
-                return;
+                return ;
             }
             // check last update v last scan - don't scan if no change since last scan
-            if(!table.updatedChanged)
+            if(App.useTableLastUpdateInQueries && !table.updatedChanged)
             {
                 App.log($"Check for Inserts - no updates based on date {table.name}");
-                return;
+                return ;
             }
             // if no change
 
@@ -540,7 +630,7 @@ namespace Monitor   // possibly should be Db
             if (table.newRecordCount == 0)   // set by getNewRecordCount 
             {
                 Console.WriteLine($"Check for Inserts - no NEW records on table {table.name}");
-                return;
+                return ;
             }
 
 
@@ -553,41 +643,12 @@ namespace Monitor   // possibly should be Db
             //string inClause = table.getNewRecordIdsClause();
 
             // we have new inserts - get the expressions
+            Query query = null;
             int i = 0;
             string sql = "";
             foreach (string expr in table.fieldLists)
             {
                 int fieldListId = table.fieldListIds[i];
-                // 2 - use a snapshotValues table - and insert into a join - record per fieldlist
-                // can't insert into a JOIN, but by updating, can auto create records!!
-                // UPDATE snapshot 
-                // INNER JOIN snapshotValues ON snapshotValues.snapshotId = snapshotId
-                //sql = $@"INSERT INTO qrySnapshotJoin 
-                //            ([_id],snapshotValues.op,[tableId],[statsId],[fieldlistId],[ordinal],[current])
-                //            SELECT [_id],'{op}',{table.id},{statsId},{fieldListId},{i+1},{expr} AS expr 
-                //                FROM [{tableName}] 
-                //                    WHERE [_id] IN {inClause};";
-
-                //sql = $@"UPDATE (
-                //                SELECT snapshot.tableId, snapshot.statsId, snapshot.[_id], 
-                //                snapshotValues.op, snapshotValues.fieldlistId, 
-                //                snapshotValues.ordinal, snapshotValues.current
-                //                FROM snapshot 
-                //                    RIGHT JOIN snapshotValues ON snapshot.id = snapshotValues.snapshotId
-                //                WHERE snapshot.[tableId]={table.id}
-                //            ) AS lhs 
-                //            RIGHT JOIN [{table.name}]
-                //                ON lhs.[_id] = [{table.name}].[_id]
-                //            SET 
-                //                lhs.[current] = {expr},
-                //                lhs.[op] = 'i',
-                //                lhs.[_id] = [{table.name}].[_id],
-                //                lhs.[tableId] = {table.id},
-                //                lhs.[statsId] = {statsId},
-                //                lhs.[fieldListId] = {fieldListId},
-                //                lhs.[ordinal] = {i+1}
-                //        WHERE lhs.current IS NULL
-                //            ;";
 
                 /*
                  * The joins are provi9ng very troublesome to update
@@ -597,7 +658,9 @@ namespace Monitor   // possibly should be Db
                 {
                     sql = $@"UPDATE [{table.name}] AS lhs 
                                 LEFT JOIN 
-                                   (SELECT * FROM snapshot WHERE [tableId] = {table.id} ) AS snapshot
+                                   (SELECT * FROM snapshot 
+                                        WHERE [tableId] = {table.id} 
+                                    ) AS snapshot
                                 ON lhs.[_id] = [snapshot].[_id]
                              SET 
                                 snapshot.[op] = 'i',
@@ -605,35 +668,59 @@ namespace Monitor   // possibly should be Db
                                 snapshot.[tableId] = {table.id},
                                 snapshot.[statsId] = {statsId}                                
                                 ";
-                    App.allDb.run(sql);
-                    App.allDb.recordStats(statsId, table.newRecordCount);
+                    query = App.allDb.run(sql);
+                    // App.allDb.recordStats(statsId, table.newRecordCount);
+                    query.rowsAffected = db.recCount("snapshot", $"statsId = {statsId}");
 
+                    sql = $@"INSERT INTO queueStats 
+                            ([tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
+                           VALUES
+                            ({table.id},'i',{statsId},#{query.getStart()}#,#{query.getEnd()}#,
+                                {query.getDuration()},{query.rowsAffected},{table.recCount},'{query.errorMsg}')
+                    ;";
+
+                    db.sql(sql);    // I really don't want to log this!!
 
                 }
 
                 // now update the snapshotValues
+
+                // all in table, and matching values snapshot & values
                 sql = $@"UPDATE [{table.name}] AS lhs 
                                 LEFT JOIN 
-                                   (SELECT snapshot.id,snapshot.[_id],sv.[op],sv.snapshotId,sv.[fieldListId],sv.[ordinal],sv.[current] FROM snapshot
-                                        LEFT JOIN snapshotValues AS sv
-                                            ON snapshot.id = sv.snapshotId
-                                        WHERE [snapshot].[tableId] = {table.id} 
-                                    ) AS snapshot
-                                ON lhs.[_id] = [snapshot].[_id]
+                                   (SELECT * FROM snapshotValues                                
+                                        WHERE [fieldlistId]={fieldListId}
+                                   ) AS sv
+                                ON lhs.[_id] = [sv].[_id]
                              SET 
-                                snapshot.snapshotId=snapshot.id,
-                                snapshot.[op] = 'i',
-                                snapshot.[fieldListId] = {fieldListId},
-                                snapshot.[ordinal] = {i+1},
-                                snapshot.[current] = {expr}
+                                sv.[_id] = lhs.[_id],
+                                sv.[statsId] = {statsId},
+                                sv.[op] = 'i',
+                                sv.[tableId] = {table.id},
+                                sv.[ordinal] = {i + 1},
+                                sv.[fieldListId] = {fieldListId},
+                                sv.[current] = {expr}
                                 ";
 
-                App.allDb.run(sql);
+                query = App.allDb.run(sql);
 
+                query.rowsAffected = db.recCount("snapshotValues", $"statsId = {statsId}");
+
+                sql = $@"INSERT INTO queueStats 
+                            ([tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
+                           VALUES
+                            ({table.id},'i',{statsId},#{query.getStart()}#,#{query.getEnd()}#,
+                                {query.getDuration()},{query.rowsAffected},{table.recCount},'{query.errorMsg}')
+                    ;";
+
+                db.sql(sql);    // I really don't want to log this!!
 
 
                 i++;    //next field list
             }
+
+            int count = db.recCount("snapshot", $"statsId={statsId}");
+            return ;
 
         }
 

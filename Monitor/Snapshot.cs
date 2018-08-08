@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Data;
 using System.Data.OleDb;
+using System.Windows.Forms;
 
 namespace Monitor
 {
@@ -90,12 +91,21 @@ namespace Monitor
             }
             reader.Close(); // need to close this reader first - why? is this two queries?
 
-            OleDbDataAdapter da = new OleDbDataAdapter(cmd);
+            OleDbDataAdapter da = new OleDbDataAdapter(tmp);
             DataTable _tables = new DataTable();
 
             da.Fill(_tables);
 
             return _tables;
+        }
+
+        public BindingSource boundTables()
+        {
+
+            BindingSource b = new BindingSource();
+            b.DataSource = fromSnapshot();
+            return b;
+
         }
 
         public void insertIdFields()

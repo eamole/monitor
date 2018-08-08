@@ -36,6 +36,10 @@ namespace Monitor
         {
             return _end.ToString("yyyy-MM-dd HH:mm:ss");    // msaccess can't handle decimals no .fff
         }
+        public double getDuration()
+        {
+            return duration.TotalMilliseconds;
+        }
         public void log(string query)
         {
             if (db != null && db.logging)
@@ -51,7 +55,7 @@ namespace Monitor
                 db.insert("timings", "start,end,duration,query",
                         $@"#{getStart()}#,
                             #{getEnd()}#,
-                            {duration.TotalMilliseconds},
+                            {getDuration()},
                             {App.sqlStringValueDelim}{query}{App.sqlStringValueDelim}"
                 );
 

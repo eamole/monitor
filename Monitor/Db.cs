@@ -103,14 +103,26 @@ namespace Monitor
         public OleDbDataReader sql(string sql)
         {
             if (!connected) connect();
-
             timing.start();
             cmd = new OleDbCommand(sql, conn);
+            OleDbDataReader reader = null;
+            string errMsg = "";
+            try
+            {
+                reader = cmd.ExecuteReader();
 
-            OleDbDataReader reader = cmd.ExecuteReader();
+            }catch(Exception e)
+            {
+                errMsg = e.Message;
+                App.error($@"Db.sql
+                    {e.Message} 
+                    {sql}
+                ");
 
+            }
             timing.stop();
-            timing.log(sql);
+            timing.log($@"{errMsg} : {sql}");
+
 
             return reader;
         }
@@ -136,10 +148,24 @@ namespace Monitor
             timing.start();
             cmd = new OleDbCommand(sql, conn);
 
-            OleDbDataReader reader = cmd.ExecuteReader();
+            OleDbDataReader reader = null;
+            string errMsg = "";
+            try
+            {
+                reader = cmd.ExecuteReader();
 
+            }
+            catch (Exception e)
+            {
+                errMsg = e.Message;
+                App.error($@"Db.sql
+                    {e.Message} 
+                    {sql}
+                ");
+
+            }
             timing.stop();
-            timing.log(sql);
+            timing.log($@"{errMsg} : {sql}");
 
             return reader;
 
@@ -161,16 +187,45 @@ namespace Monitor
             
             timing.start();
             cmd = new OleDbCommand(sql , conn);
-            
-            OleDbDataReader reader = cmd.ExecuteReader();
+            OleDbDataReader reader = null;
+            string errMsg = "";
+            try
+            {
+                reader = cmd.ExecuteReader();
 
+            }
+            catch (Exception e)
+            {
+                errMsg = e.Message;
+                App.error($@"Db.sql
+                    {e.Message} 
+                    {sql}
+                ");
+
+            }
             timing.stop();
-            timing.log(sql);
+            timing.log($@"{errMsg} : {sql}");
 
             return reader;
         }
         /*
+         * use a queryname to get just one schema
+         * looks for queries
+         */
+        public DataTable getViews(string queryName = null)
+        {
+            if (!connected) connect();
+
+            timing.start();
+            DataTable result = conn.GetOleDbSchemaTable(OleDbSchemaGuid.Views, new object[] { null, null, queryName});
+            timing.stop();
+            timing.log($"GetDatabaseSchema - VIEWS/QUERIES {queryName} ");
+            return result;
+        }
+
+        /*
          * use a table name to get just one schema
+         * does not seem to find linked tables - just for the Schema Method
          */
         public DataTable getTables(string tableName = null)
         {
@@ -230,11 +285,25 @@ namespace Monitor
 
             timing.start();
             cmd = new OleDbCommand(sql, conn);
-            App.log("exec query " + sql);
-            rowsAffected = cmd.ExecuteNonQuery();
-            App.log("done");
+            string errMsg = "";
+            try
+            {
+                App.log("exec update query " + sql);
+                rowsAffected = cmd.ExecuteNonQuery();
+                App.log("done");
+
+            }
+            catch (Exception e)
+            {
+                errMsg = e.Message;
+                App.error($@"Db.sql
+                    {e.Message} 
+                    {sql}
+                ");
+
+            }
             timing.stop();
-            timing.log(sql);
+            timing.log($@"{errMsg} : {sql}");
 
         }
         public void delete(string tableName, string where = "", bool confirmAll = false)
@@ -259,11 +328,25 @@ namespace Monitor
 
             timing.start();
             cmd = new OleDbCommand(sql, conn);
-            App.log("delete query " + sql);
-            rowsAffected = cmd.ExecuteNonQuery();
-            App.log("done");
+            string errMsg = "";
+            try
+            {
+                App.log("exec delete query " + sql);
+                rowsAffected = cmd.ExecuteNonQuery();
+                App.log("done");
+
+            }
+            catch (Exception e)
+            {
+                errMsg = e.Message;
+                App.error($@"Db.sql
+                    {e.Message} 
+                    {sql}
+                ");
+
+            }
             timing.stop();
-            timing.log(sql);
+            timing.log($@"{errMsg} : {sql}");
 
 
         }
@@ -320,6 +403,7 @@ namespace Monitor
             string sql = $"INSERT INTO [{tableName}] ({_fields}) VALUES ({_values})";
 
             if (!connected) connect();
+            timing.start();
             cmd = new OleDbCommand(sql, conn);
             // add the params
             int _i = 0;
@@ -327,10 +411,25 @@ namespace Monitor
                 cmd.Parameters.AddWithValue($"@"+fields[_i], values[_i]);
                 _i++;
             }
+            string errMsg = "";
+            try
+            {
+                App.log("exec insert query " + sql);
+                rowsAffected = cmd.ExecuteNonQuery();
+                App.log("done");
 
-            rowsAffected = cmd.ExecuteNonQuery();
+            }
+            catch (Exception e)
+            {
+                errMsg = e.Message;
+                App.error($@"Db.sql
+                    {e.Message} 
+                    {sql}
+                ");
+
+            }
             timing.stop();
-            timing.log(sql);
+            timing.log($@"{errMsg} : {sql}");
 
         }
         public void insert(string tableName , string fields , string values)
@@ -416,9 +515,25 @@ namespace Monitor
                 cmd.Parameters.AddWithValue($"@sql", sqlQuery);
             }
 
-            rowsAffected = cmd.ExecuteNonQuery();
+            string errMsg = "";
+            try
+            {
+                App.log("exec insert query " + sql);
+                rowsAffected = cmd.ExecuteNonQuery();
+                App.log("done");
+
+            }
+            catch (Exception e)
+            {
+                errMsg = e.Message;
+                App.error($@"Db.sql
+                    {e.Message} 
+                    {sql}
+                ");
+
+            }
             timing.stop();
-            timing.log(sql);
+            timing.log($@"{errMsg} : {sql}");
         }
 
         public static Table fromAdoDb(Db db, DataRow tableMeta)
@@ -455,7 +570,7 @@ namespace Monitor
             return dict;
         }
 
-        public Int32 recCount(string table,string where="")
+        public int recCount(string table,string where="")
         {
             string sql = $"SELECT COUNT(*) FROM [{table}] ";
             if (where.Length > 0) sql += $" WHERE {where} ";

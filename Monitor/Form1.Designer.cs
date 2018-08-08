@@ -52,6 +52,8 @@
             this.btnGenFieldLists = new System.Windows.Forms.Button();
             this.button1 = new System.Windows.Forms.Button();
             this.btnStartMonitor = new System.Windows.Forms.Button();
+            this.tabHigh = new System.Windows.Forms.TabPage();
+            this.dataGridView1 = new System.Windows.Forms.DataGridView();
             this.tabs.SuspendLayout();
             this.tabTables.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgvTables)).BeginInit();
@@ -61,6 +63,8 @@
             ((System.ComponentModel.ISupportInitialize)(this.dgvStats)).BeginInit();
             this.tabData.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgvData)).BeginInit();
+            this.tabHigh.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).BeginInit();
             this.SuspendLayout();
             // 
             // label1
@@ -125,6 +129,7 @@
             this.tabs.Controls.Add(this.tabFields);
             this.tabs.Controls.Add(this.tabStats);
             this.tabs.Controls.Add(this.tabData);
+            this.tabs.Controls.Add(this.tabHigh);
             this.tabs.Location = new System.Drawing.Point(29, 83);
             this.tabs.Name = "tabs";
             this.tabs.SelectedIndex = 0;
@@ -306,6 +311,27 @@
             this.btnStartMonitor.UseVisualStyleBackColor = true;
             this.btnStartMonitor.Click += new System.EventHandler(this.btnStartMonitor_Click);
             // 
+            // tabHigh
+            // 
+            this.tabHigh.Controls.Add(this.dataGridView1);
+            this.tabHigh.Location = new System.Drawing.Point(4, 22);
+            this.tabHigh.Name = "tabHigh";
+            this.tabHigh.Padding = new System.Windows.Forms.Padding(3);
+            this.tabHigh.Size = new System.Drawing.Size(728, 340);
+            this.tabHigh.TabIndex = 4;
+            this.tabHigh.Text = "High";
+            this.tabHigh.UseVisualStyleBackColor = true;
+            // 
+            // dataGridView1
+            // 
+            this.dataGridView1.AllowUserToOrderColumns = true;
+            this.dataGridView1.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            this.dataGridView1.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.dataGridView1.Location = new System.Drawing.Point(3, 3);
+            this.dataGridView1.Name = "dataGridView1";
+            this.dataGridView1.Size = new System.Drawing.Size(722, 334);
+            this.dataGridView1.TabIndex = 1;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -338,6 +364,8 @@
             ((System.ComponentModel.ISupportInitialize)(this.dgvStats)).EndInit();
             this.tabData.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.dgvData)).EndInit();
+            this.tabHigh.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -369,6 +397,8 @@
         private System.Windows.Forms.Button btnGenFieldLists;
         private System.Windows.Forms.Button button1;
         private System.Windows.Forms.Button btnStartMonitor;
+        private System.Windows.Forms.TabPage tabHigh;
+        private System.Windows.Forms.DataGridView dataGridView1;
     }
 }
 

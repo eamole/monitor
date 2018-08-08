@@ -86,7 +86,9 @@ namespace Monitor
                 }
             } else
             {
-                App.log("This query should have stopped. Will stop " + sql);
+                App.log($@"This query should have stopped. Will stop 
+                            {errorMsg}
+                            {sql}");
                 timer.Stop();
             }
         }
