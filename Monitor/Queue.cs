@@ -26,7 +26,7 @@ namespace Monitor
         {
             queues = new Dictionary<int, Queue>();
             App.log("load  queues");
-            OleDbDataReader reader = App.snapshot.query("queues", "", "priority");
+            OleDbDataReader reader = App.snapshotDb.query("queues", "", "priority");
             while(reader.Read())
             {
                 Queue q = new Queue(reader);
@@ -65,9 +65,9 @@ namespace Monitor
         {
             App.log("next file");
             // load the next file
-            string table = "tables";
+            string tables = "tables";
             string where = $"queueId={id} and queueRun<{queueRun}";
-            int count = App.snapshot.recCount(table, where);
+            int count = App.snapshotDb.recCount(tables, where);
             if (count == 0)
             {
                 App.log("queue processed/empty, next queue run");
@@ -77,7 +77,7 @@ namespace Monitor
                 save();
             }
             // sort by high numbers first - by default tables will by 0
-            OleDbDataReader reader = App.snapshot.query(table, where, "priority DESC");
+            OleDbDataReader reader = App.snapshotDb.query(tables, where, "priority DESC");
             if (reader.HasRows)
             {
                 // still jobs in queue
@@ -90,6 +90,12 @@ namespace Monitor
                 string tableName = reader.GetValue(reader.GetOrdinal("name")).ToString();
                 reader.Close(); // 
 
+                Table table = App.allDb.tables[tableName];
+                // once per pass
+                table.getRecCount();
+
+                App.log("look for updates " + tableName);
+                Table.checkForUpdates(tableName);
 
                 App.log("look for inserts " + tableName);
                 Table.checkForInserts(tableName);
@@ -98,7 +104,7 @@ namespace Monitor
                 App.log("move this table to next run");
                 // TODO change to tableid qhen using queueTables
                 // starnge I didn't get a query error on tableId I think tableId has meaning in msaccess!! It just hung!!
-                App.snapshot.update(table, "queueRun", $"{queueRun}", $"queueId={id} AND id={tableId}");
+                App.snapshotDb.update(tables, "queueRun", $"{queueRun}", $"queueId={id} AND id={tableId}");
 
                 App.log("queue pause");
                 // **** now set the wait
@@ -115,7 +121,7 @@ namespace Monitor
         {
             string fields = "name,priority,queueRun";
             string values = $"\"{name}\" , {priority} , {queueRun}";
-            App.snapshot.upsert("queues", fields, values,$"id = {id}");
+            App.snapshotDb.upsert("queues", fields, values,$"id = {id}");
         }
 
 

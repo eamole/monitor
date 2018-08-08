@@ -32,13 +32,18 @@ namespace Monitor   // possibly should be Db
         public string name;
         public DateTime created;
         public DateTime updated;
+
+        public bool recCountChanged = false;
+        public bool updatedChanged = false; // transient flag set when the date is checked
+
         public int recCount;
         // TODO : need the ID as well - should maybe create an FieldList object with ID and the actual list
         public string[] fieldLists;
         public int[] fieldListIds;  // hack
 
 
-        public int insertedRecordCount;  // a storage area for a recCount when checking for new recrods
+
+        public int newRecordCount;  // a storage area for a recCount when checking for new recrods
 
         public Dictionary<string, Field> fields;
         
@@ -55,7 +60,7 @@ namespace Monitor   // possibly should be Db
         // fromSnapshot
         public static Table getTable(OleDbDataReader reader)
         {
-            Snapshot db = App.snapshot;
+            Snapshot db = App.snapshotDb;
             string tableName = reader.GetValue(reader.GetOrdinal("name")).ToString();
 
             Table table = null;
@@ -72,23 +77,23 @@ namespace Monitor   // possibly should be Db
             return table;
         }
 
-        public bool getLastUpdate()
+        public bool getLastUpdate(bool willSave = true)
         {
             DataTable schema = App.originalDb.getTables(name);
             DateTime lastUpdate = DateTime.Parse(schema.Rows[0]["DATE_MODIFIED"].ToString());
-            bool isUpdated = false;
             TimeSpan t = lastUpdate - updated;
             if(!lastUpdate.Equals(updated))
             {
                 App.log($"Table changed (last remembered update : {updated} | latest update ({lastUpdate}) ");
                 updated = lastUpdate;
-                isUpdated = true;
-                save(false);
+                updatedChanged = true;
+                if(willSave)
+                    save(false);
             } else
             {
-                App.log("no changes based on table lupdate date");
+                App.log($"no changes based on table lupdate date | (last remembered update : {updated} | latest update ({lastUpdate}) ");
             }
-            return isUpdated;
+            return updatedChanged;
 
         }
 
@@ -111,7 +116,7 @@ namespace Monitor   // possibly should be Db
          */
         public static DataTable getFields(string tableName)
         {
-            Snapshot db = App.snapshot;
+            Snapshot db = App.snapshotDb;
             Table table = db.tables[tableName];
             OleDbDataReader reader = db.query("fields", $" [tableId] = {table.id}", "ordinal");
             OleDbDataAdapter da = new OleDbDataAdapter(db.cmd);
@@ -141,7 +146,7 @@ namespace Monitor   // possibly should be Db
 
         public static DataTable getFieldStats(string tableName)
         {
-            Snapshot db = App.snapshot;
+            Snapshot db = App.snapshotDb;
             Table table = db.tables[tableName];
             int batchId = db.getLastBatchId();
             //reader = db.query("fieldStats", $" [tableId] = {table.id} AND [batchId] = {batchId}");
@@ -213,10 +218,10 @@ namespace Monitor   // possibly should be Db
 
         public static void genFieldLists(string tableName)
         {
-            Db db = App.snapshot.originalDb;
+            Db db = App.snapshotDb.originalDb;
 
-            Table table = App.snapshot.tables[tableName];
-            int batchId = App.snapshot.getLastBatchId();
+            Table table = App.snapshotDb.tables[tableName];
+            int batchId = App.snapshotDb.getLastBatchId();
             // I need to view the fields in nulls increasing order - need a join with fieldStats
             string sql = $@"SELECT fields.*, fieldStats.nulls, 
                             fieldStats.recCount, fieldStats.batchId
@@ -228,7 +233,7 @@ namespace Monitor   // possibly should be Db
             int fieldList = 1;
             int i = 0;
 
-            OleDbDataReader reader = App.snapshot.sql(sql);
+            OleDbDataReader reader = App.snapshotDb.sql(sql);
             string delim = "\"";   // use a special char as delim
             sql = delim;
             bool written=false;
@@ -254,7 +259,7 @@ namespace Monitor   // possibly should be Db
                     // break the list
                     // write the field list
                     sql += delim;
-                    App.snapshot.upsert("fieldLists", "tableId,ordinal,fieldList",
+                    App.snapshotDb.upsert("fieldLists", "tableId,ordinal,fieldList",
                         $"|{table.id}|{fieldList}|{sql}",
                         $"[tableId]={table.id} AND [ordinal]={fieldList}");
 
@@ -268,7 +273,7 @@ namespace Monitor   // possibly should be Db
             if (!written)
             {     // write last fieldList 
                 sql += delim;
-                App.snapshot.upsert("fieldLists", "tableId,ordinal,fieldList",
+                App.snapshotDb.upsert("fieldLists", "tableId,ordinal,fieldList",
                 $"|{table.id}|{fieldList}|{sql}",
                 $"[tableId]={table.id} AND [ordinal]={fieldList}");
             }
@@ -279,7 +284,7 @@ namespace Monitor   // possibly should be Db
 
         public string[] getFieldLists()
         {
-            Snapshot db = App.snapshot;
+            Snapshot db = App.snapshotDb;
             int count = db.recCount("fieldLists", $"[tableId]={id}");
             fieldLists = new string[count];
             fieldListIds = new int[count];
@@ -295,7 +300,7 @@ namespace Monitor   // possibly should be Db
         // no longer used
         public static string getFieldExpression(string tableName)
         {
-            Snapshot snapshot = App.snapshot;
+            Snapshot snapshot = App.snapshotDb;
             Db db = snapshot.originalDb;
 
             // compute a JSON version of the record?
@@ -332,15 +337,35 @@ namespace Monitor   // possibly should be Db
              */ 
         } 
 
-        public int countNewRecords() {
-            App.log("Getting new record count for " + name);
-            string sql = $@"SELECT Count(*) as RecCount FROM [{name}]
-                                WHERE [{name}].[_id] NOT IN 
-                                   (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
+        public int getNewRecordCount() {
+            App.log("Getting NEW record count for " + name);
+            // way too slow
+            //string sql = $@"SELECT Count(*) as RecCount FROM [{name}]
+            //                    WHERE [{name}].[_id] NOT IN 
+            //                       (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
 
-            OleDbDataReader reader = App.snapshot.sql(sql);
-            reader.Read();
-            int count = int.Parse(reader.GetValue(reader.GetOrdinal("RecCount")).ToString());
+            //string sql = $@"SELECT SUM(IIF(snapshot.[value] IS NULL,1,0)) as RecCount FROM [{name}]
+            //                    LEFT JOIN snapshot 
+            //                        ON snapshot.[_id] = {name}.[_id];";
+
+            string sql = $@"SELECT COUNT(*) as RecCount FROM [{name}]
+                                LEFT JOIN 
+                                    (SELECT * FROM snapshot 
+                                        WHERE snapshot.[tableId] = {id}) AS snapshot
+                                    ON snapshot.[_id] = [{name}].[_id]
+                                WHERE snapshot.op IS NULL
+                            ;";
+
+
+            //OleDbDataReader reader = App.snapshot.sql(sql);
+            Query q = App.allDb.reader(sql);
+            int count = 0;
+            if ( q.read() )
+            {
+                count = q.getInt("RecCount");
+                newRecordCount = count;
+
+            }
             App.log("done. Count : " + count);
             return count;
         }
@@ -349,8 +374,8 @@ namespace Monitor   // possibly should be Db
         public string getNewRecordIdsClause()
         {
             string clause = "";
-            int count = countNewRecords();
-            insertedRecordCount = count;  // so it can be used outside
+            int count = getNewRecordCount();
+            newRecordCount = count;  // so it can be used outside
             if (count == 0)
             {
                 return clause;
@@ -383,8 +408,8 @@ namespace Monitor   // possibly should be Db
                                    (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
 
             // clear temp file
-            App.snapshot.delete("tempIds", "", true);
-            App.snapshot.sql(sql);
+            App.allDb.delete("tempIds", "", true);
+            App.allDb.sql(sql);
             string clause = " (SELECT [_id] FROM TempIds) ";
             return clause;
         }
@@ -402,7 +427,7 @@ namespace Monitor   // possibly should be Db
                                 WHERE [_id] NOT IN 
                                    (SELECT [_id] FROM [snapshot] WHERE [tableId] = {id} );";
 
-            OleDbDataReader reader = App.snapshot.sql(sql);
+            OleDbDataReader reader = App.allDb.sql(sql);
             if (reader.HasRows)
             {
                 reader.Read();
@@ -416,6 +441,73 @@ namespace Monitor   // possibly should be Db
             }
             return ids;
         }
+
+        public static void checkForUpdates(string tableName)
+        {
+
+            Db db = App.allDb;
+            Table table = App.snapshotDb.tables[tableName];
+            string op = "u";
+            //int count = db.recCount($"{table.name}");
+
+
+            // an unchanged record count not sufficient. 
+            if (table.recCount == 0)
+            {
+                App.log($"Check for Updates - no records on table {table.name}");
+                return;
+            }
+            // check last update v last scan - don't scan if no change since last scan
+            if(!table.updatedChanged)
+            {
+                App.log($"Check for Updates - no updates based on date {table.name}");
+                return;
+            }
+            // if no change
+
+
+            if (table.fieldLists == null)
+                table.getFieldLists();
+
+            int statsId = App.allDb.getNewStats(op, table.id);
+
+            // we have new inserts - get the expressions
+            int i = 0;
+            string sql = "";
+            foreach (string expr in table.fieldLists)
+            {
+                int fieldListId = table.fieldListIds[i];
+                // now update the snapshotValues
+                sql = $@"UPDATE [{table.name}] AS lhs 
+                                LEFT JOIN 
+                                   (SELECT snapshot.id,snapshot.[_id],sv.[op],sv.snapshotId,sv.[fieldListId],sv.[ordinal],sv.[current] FROM snapshot
+                                        LEFT JOIN snapshotValues AS sv
+                                            ON snapshot.id = sv.snapshotId
+                                        WHERE [snapshot].[tableId] = {table.id} 
+                                    ) AS snapshot
+                                ON lhs.[_id] = [snapshot].[_id]
+                             SET 
+                                snapshot.snapshotId=snapshot.id,
+                                snapshot.[op] = 'i',
+                                snapshot.[fieldListId] = {fieldListId},
+                                snapshot.[ordinal] = {i + 1},
+                                snapshot.[old]=snapshot.[value],
+                                snapshot.[current] = {expr}
+                             WHERE 
+                                snapshot.[current] <> {expr}
+                                ";
+
+                App.allDb.run(sql);
+
+
+
+                i++;    //next field list
+            }
+
+        }
+
+
+
         /*
          * change so that snapshotValues holds the actual data - 1 rec pre fieldlist
          * this makes updates eaaier to detect
@@ -423,12 +515,12 @@ namespace Monitor   // possibly should be Db
         public static void checkForInserts(string tableName) 
         {
 
-            Db db = App.snapshot.originalDb;
-            Table table = App.snapshot.tables[tableName];
+            Db db = App.allDb;
+            Table table = App.snapshotDb.tables[tableName];
             string op = "i";
             //int count = db.recCount($"{table.name}");
 
-            table.getRecCount();
+            //table.getRecCount();
 
             // an unchanged record count not sufficient. 
             if(table.recCount == 0)
@@ -437,26 +529,29 @@ namespace Monitor   // possibly should be Db
                 return;
             }
             // check last update v last scan - don't scan if no change since last scan
-            //if(!table.getLastUpdate())
-            //{
-            //    App.log($"Check for Inserts - no updates based on date {table.name}");
-            //    return;
-            //}
+            if(!table.updatedChanged)
+            {
+                App.log($"Check for Inserts - no updates based on date {table.name}");
+                return;
+            }
             // if no change
 
+            table.getNewRecordCount();
+            if (table.newRecordCount == 0)   // set by getNewRecordCount 
+            {
+                Console.WriteLine($"Check for Inserts - no NEW records on table {table.name}");
+                return;
+            }
 
 
             if (table.fieldLists==null)
                 table.getFieldLists();
 
-            int statsId = App.snapshot.getNewStats(op, table.id);
+            int statsId = App.allDb.getNewStats(op, table.id);
 
-            string inClause = table.getNewRecordIdsClause();
-            if (table.insertedRecordCount == 0)   // set by getNewRecordCount 
-            {
-                Console.WriteLine($"Check for Inserts - no NEW records on table {table.name}");
-                return;
-            }
+            // no longer needed
+            //string inClause = table.getNewRecordIdsClause();
+
             // we have new inserts - get the expressions
             int i = 0;
             string sql = "";
@@ -467,28 +562,75 @@ namespace Monitor   // possibly should be Db
                 // can't insert into a JOIN, but by updating, can auto create records!!
                 // UPDATE snapshot 
                 // INNER JOIN snapshotValues ON snapshotValues.snapshotId = snapshotId
-                sql = $@"INSERT INTO qrySnapshotJoin 
-                            ([_id],snapshotValues.op,[tableId],[statsId],[fieldlistId],[ordinal],[current])
-                            SELECT [_id],'{op}',{table.id},{statsId},{fieldListId},{i+1},{expr} AS expr FROM [{tableName}] 
-                                WHERE [_id] IN {inClause};";
+                //sql = $@"INSERT INTO qrySnapshotJoin 
+                //            ([_id],snapshotValues.op,[tableId],[statsId],[fieldlistId],[ordinal],[current])
+                //            SELECT [_id],'{op}',{table.id},{statsId},{fieldListId},{i+1},{expr} AS expr 
+                //                FROM [{tableName}] 
+                //                    WHERE [_id] IN {inClause};";
 
+                //sql = $@"UPDATE (
+                //                SELECT snapshot.tableId, snapshot.statsId, snapshot.[_id], 
+                //                snapshotValues.op, snapshotValues.fieldlistId, 
+                //                snapshotValues.ordinal, snapshotValues.current
+                //                FROM snapshot 
+                //                    RIGHT JOIN snapshotValues ON snapshot.id = snapshotValues.snapshotId
+                //                WHERE snapshot.[tableId]={table.id}
+                //            ) AS lhs 
+                //            RIGHT JOIN [{table.name}]
+                //                ON lhs.[_id] = [{table.name}].[_id]
+                //            SET 
+                //                lhs.[current] = {expr},
+                //                lhs.[op] = 'i',
+                //                lhs.[_id] = [{table.name}].[_id],
+                //                lhs.[tableId] = {table.id},
+                //                lhs.[statsId] = {statsId},
+                //                lhs.[fieldListId] = {fieldListId},
+                //                lhs.[ordinal] = {i+1}
+                //        WHERE lhs.current IS NULL
+                //            ;";
 
-                //Console.WriteLine(sql);
-                try
+                /*
+                 * The joins are provi9ng very troublesome to update
+                 * go for multiple passes to update the two tables
+                 */
+                if(i==0)   // first pass only, insert into snapshot
                 {
-                    //OleDbDataReader reader = 
-                    App.snapshot.sql(sql);
-                    // how many records added? - actually second + passes are techincally updates
-                    // and we know the record count - we got it from _ids
-                    //int newRecords = App.snapshot.recCount("snapshot", $"[statsId]={statsId}");
-                    App.snapshot.recordStats(statsId, table.insertedRecordCount);
+                    sql = $@"UPDATE [{table.name}] AS lhs 
+                                LEFT JOIN 
+                                   (SELECT * FROM snapshot WHERE [tableId] = {table.id} ) AS snapshot
+                                ON lhs.[_id] = [snapshot].[_id]
+                             SET 
+                                snapshot.[op] = 'i',
+                                snapshot.[_id] = [lhs].[_id],
+                                snapshot.[tableId] = {table.id},
+                                snapshot.[statsId] = {statsId}                                
+                                ";
+                    App.allDb.run(sql);
+                    App.allDb.recordStats(statsId, table.newRecordCount);
+
 
                 }
-                catch (Exception e)
-                {
-                    Console.WriteLine("Error " + e.Message);
-                    App.log(sql);
-                }
+
+                // now update the snapshotValues
+                sql = $@"UPDATE [{table.name}] AS lhs 
+                                LEFT JOIN 
+                                   (SELECT snapshot.id,snapshot.[_id],sv.[op],sv.snapshotId,sv.[fieldListId],sv.[ordinal],sv.[current] FROM snapshot
+                                        LEFT JOIN snapshotValues AS sv
+                                            ON snapshot.id = sv.snapshotId
+                                        WHERE [snapshot].[tableId] = {table.id} 
+                                    ) AS snapshot
+                                ON lhs.[_id] = [snapshot].[_id]
+                             SET 
+                                snapshot.snapshotId=snapshot.id,
+                                snapshot.[op] = 'i',
+                                snapshot.[fieldListId] = {fieldListId},
+                                snapshot.[ordinal] = {i+1},
+                                snapshot.[current] = {expr}
+                                ";
+
+                App.allDb.run(sql);
+
+
 
                 i++;    //next field list
             }
@@ -576,17 +718,20 @@ namespace Monitor   // possibly should be Db
 
         public bool getRecCount()
         {
-            int count = App.originalDb.recCount(name);
-            bool isUpdated = false;
-            if (count != recCount)
+            if (getLastUpdate(false))   // don't check if table hasn't changed
             {
-                Console.WriteLine($"Table {name} | changed recCount | old : {recCount} | new : {count} ");
-                recCount = count;
-                isUpdated = true;
-                save(false);
+                int count = App.originalDb.recCount(name);
+                if (count != recCount)
+                {
+                    Console.WriteLine($"Table {name} | changed recCount | old : {recCount} | new : {count} ");
+                    recCount = count;
+                    recCountChanged = true;
+                    //save(false);
+                }
+                save(false);    // remember the lupdate if nothing else
             }
 
-            return isUpdated;
+            return recCountChanged;
         }
         public void adodbGetFields()
         {

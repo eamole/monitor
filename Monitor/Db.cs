@@ -86,7 +86,20 @@ namespace Monitor
             timing.stop();
             timing.log("connect : " + filename);
         }
+
+        /*
+         * two new methods to use the Query object
+         */
+        public Query reader(string sql)
+        {
+            return Query.reader(this, sql);
+        }
+        public Query run(string sql)
+        {
+            return Query.run(this, sql);
+        }
         
+
         public OleDbDataReader sql(string sql)
         {
             if (!connected) connect();

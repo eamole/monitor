@@ -10,8 +10,8 @@ namespace Monitor
 {
     class App
     {
-        public static int queryTimerInterval = 1000; // ms only for long running queries
-        public static int queryMaxRunTime = 60*1000; // 30 seconds ms only for long running queries
+        public static int queryTimerInterval = 3000; // ms only for long running queries
+        public static int queryMaxRunTime = 10*1000; // 30 seconds ms only for long running queries
         public static int queryMaxRetries = 2;      // max number of times a query is rerun, before being blocked
 
         public static int maxFieldListSize = 30;
@@ -24,8 +24,9 @@ namespace Monitor
         public static string timeMask = "HH:mm:ss"; // 24 hour clock
         // the 3 dbs in the set
         public static Db originalDb;
-        public static Snapshot snapshot;
-        public static Db logger;
+        public static Snapshot snapshotDb;
+        public static Db loggerDb;
+        public static Snapshot allDb; // all tables linked
 
         public static void init()
         {

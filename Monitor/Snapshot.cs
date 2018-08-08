@@ -14,6 +14,7 @@ namespace Monitor
         public Db originalDb;
         public string originalFileName;
         public string snapshotFileName;
+        public string allDbFileName;
 
         public static Snapshot getInstance(string filename)
         {
@@ -22,10 +23,11 @@ namespace Monitor
             string _filename = Path.GetFileNameWithoutExtension(filename);
             string snapshotFileName = Path.GetDirectoryName(filename) + "\\" +  _filename + "_snapshot.mdb";
             string originalFileName = filename;
+            string allDbFileName = Path.GetDirectoryName(filename) + "\\" + _filename + "_all.mdb";
 
-            return new Snapshot(originalFileName, snapshotFileName);
+            return new Snapshot(originalFileName, snapshotFileName, allDbFileName);
         }
-        public Snapshot(string originalFileName,string snapshotFileName) : base(snapshotFileName)
+        public Snapshot(string originalFileName,string snapshotFileName,string allDbFileName) : base(allDbFileName)
         {
             //setLog(this);
             /*
@@ -34,11 +36,16 @@ namespace Monitor
              */
             this.originalFileName = originalFileName;
             this.snapshotFileName = snapshotFileName;
+            this.allDbFileName = snapshotFileName;
 
-            App.logger = new Db(snapshotFileName);   // no log
-            setLog(App.logger); // log snapshot queries
+            App.loggerDb = new Db(snapshotFileName);   // no log
+            setLog(App.loggerDb); // log snapshot queries
 
-            originalDb = new Db(originalFileName,App.logger);   // log Db queries
+            originalDb = new Db(originalFileName,App.loggerDb);   // log Db queries
+            //App.allDb = new Db(allDbFileName, App.loggerDb);
+            App.allDb = this;   // we'll use this as the new "snapshot!";
+
+
             connect();  // avoid looping issues with log
            
             
@@ -141,7 +148,7 @@ namespace Monitor
         }
         public int getLastBatchId()
         {
-            OleDbDataReader reader = App.snapshot.sql("SELECT Max([id]) as [MaxId] FROM [batches];");
+            OleDbDataReader reader = App.allDb.sql("SELECT Max([id]) as [MaxId] FROM [batches];");
             reader.Read();
             int batchId = int.Parse(reader.GetValue(reader.GetOrdinal("MaxId")).ToString());
             reader.Close();

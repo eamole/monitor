@@ -20,6 +20,7 @@ namespace Monitor
     class Query : Timing
     {
         public Db db;
+        public string name; // must name queries? or is it an option
         public string sql;
         public System.Timers.Timer timer;
         public OleDbCommand cmd;
@@ -31,7 +32,8 @@ namespace Monitor
         public int _runtime;
         public OleDbDataReader _reader;
 
-        public Query(Db db,string sql=""): base(App.snapshot)
+                                        // log to snapshot
+        public Query(Db db,string sql=""): base(App.loggerDb)
         {
             this.db = db;
             this.sql = sql;
@@ -56,28 +58,42 @@ namespace Monitor
         }
         public int runtime()
         {
-            _runtime = DateTime.Now.Subtract(_start).Milliseconds;
+            TimeSpan runtime = DateTime.Now.Subtract(_start);
+            _runtime = (int) runtime.TotalMilliseconds;
             return _runtime;
         }
         private void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
         {
-            App.log("Query status check " + e.SignalTime);
+            App.log($"Query status check @ {e.SignalTime} | Runtime : {runtime()} | Max RunTime : {App.queryMaxRunTime}");
             if(state == states.Running)
             {
                 if(runtime() > App.queryMaxRunTime)
                 {
+                    App.log($"need to cancel query.| Runtime : {runtime()} | Max RunTime : {App.queryMaxRunTime} ");
+                    Timing timing = new Timing(this.db);
                     cmd.Cancel();
+                    timing.stop();
+                    timing.log("Cancelling Query");
                     state = states.Done;
                     result = results.Stopped;
-
+                    timer.Stop();
+                    throw new TimeoutException($"SQL Query exceeded maximum allowed runtime. | Runtime : {runtime()} | Max RunTime : {App.queryMaxRunTime} ") ;
                     // I should save/log this efffort and allow a retry - now while in memory?
                     // or leave the scheduler retry
+                } else
+                {
+                    timer.Start();  // schedule another run
                 }
+            } else
+            {
+                App.log("This query should have stopped. Will stop " + sql);
+                timer.Stop();
             }
         }
 
         new private void start()
         {
+            App.log("start query");
             base.start();   // timing;
             timer.Start();
             state = states.Running;
@@ -85,6 +101,7 @@ namespace Monitor
 
         new private void stop()
         {
+            App.log("query complete");
             base.stop();    // timing
             timer.Stop();   // cancel timer
             state = states.Done;
@@ -94,7 +111,8 @@ namespace Monitor
         }
         public void error(Exception e)
         {
-            App.error("SQL Query Reader : " + e.Message);
+            App.error($@"*** SQL Query Reader : {e.Message}
+                            {sql}");
             errorMsg = e.Message;
 
             // allow retry?
@@ -114,19 +132,28 @@ namespace Monitor
             try
             {
                 reader = cmd.ExecuteReader();
-            } catch(Exception e)
+                stop();
+                log(sql);
+
+            }
+            catch (Exception e)
             {
                 error(e);
             }
-
-            stop();
-            log(sql);
 
             return reader;
         }
         public bool read()
         {
-            return _reader.Read();
+            bool more = false;
+            try
+            {
+                more = _reader.Read();
+            } catch(Exception e)
+            {
+                App.error("Something wrong with SQL Reader : " + e.Message);
+            }
+            return more;
         }
 
 
@@ -139,21 +166,26 @@ namespace Monitor
             string value = _reader.GetValue(_reader.GetOrdinal(name)).ToString();
             return value;
         }
-
-        public int get(string name)
+        public string getString(string name)
         {
-            int value = int.Parse(_reader.GetValue(_reader.GetOrdinal(name)).ToString());
+            string value = get(name);
             return value;
         }
 
-        public DateTime get(string name)
+        public int getInt(string name)
         {
-            DateTime value = DateTime.Parse(_reader.GetValue(_reader.GetOrdinal(name)).ToString());
+            int value = int.Parse(get(name));
             return value;
         }
-        public bool get(string name)
+
+        public DateTime getDateTime(string name)
         {
-            bool value = bool.Parse(_reader.GetValue(_reader.GetOrdinal(name)).ToString());
+            DateTime value = DateTime.Parse(get(name));
+            return value;
+        }
+        public bool getBool(string name)
+        {
+            bool value = bool.Parse(get(name));
             return value;
         }
 
@@ -169,13 +201,14 @@ namespace Monitor
             try
             {
                 rowsAffected = cmd.ExecuteNonQuery();
-            } catch(Exception e)
+                App.log("done");
+                stop();
+                log(sql);
+            }
+            catch (Exception e)
             {
                 error(e);
             }
-            App.log("done");
-            stop();
-            log(sql);
             return rowsAffected;
         }
 

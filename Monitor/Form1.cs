@@ -97,9 +97,9 @@ namespace Monitor
             snapshot = Snapshot.getInstance(Properties.Settings.Default.DatabaseFilename);
             db = snapshot.originalDb;
 
-            App.snapshot = snapshot;
+            App.snapshotDb = snapshot;
             App.originalDb = db;
-
+            
             dgvTables.DataSource = snapshot.fromSnapshot();
 
         }
