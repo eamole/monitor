@@ -28,5 +28,17 @@ namespace Monitor
             isString = true;
         }
 
+        /*
+        * this will cause problems based on whether int or float
+        */
+        override public object parseSqlValue(string sqlValue)
+        {
+            string value = sqlValue.Trim();
+            if (sqlValue.Length == 0) return sqlValue;
+            if(value[0]=='\'') value = value.Substring(1);
+            if (value.EndsWith("'")) value = value.Substring(0, value.Length - 1);
+            return value;    // may need trim off '
+        }
+
     }
 }

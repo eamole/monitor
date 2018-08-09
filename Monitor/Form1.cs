@@ -232,7 +232,7 @@ namespace Monitor
             if (tableName != null)
             {
                 // snapshot.tables[tableName].getNewRecordIds();
-                Table.checkForInserts(tableName);
+                Table.checkForInserts(1,tableName);
                 //   Table.genFieldLists(tableName);
             }
         }
@@ -246,6 +246,20 @@ namespace Monitor
             //    //   Table.genFieldLists(tableName);
             //}
             Queue.loadQueues();
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            Snapshot.checkForDeltas();
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+            Table table = snapshot.tables["Agents"];
+            // [inactive]  & chr(124) &  [account_agent]  & chr(124) &  [active]  & chr(124) &  [agent_name]  & chr(124) &  [direct_debit]  & chr(124) &  [language]  & chr(124) &  [Override_Commission]  & chr(124) &  [override_terms]  & chr(124) &  [use_ticket_stock]  & chr(124) &  [use_voucher_stock]  & chr(124) &  [Vat_Liable]  & chr(124) &  [Direct_Booking]  & chr(124) &  [agent_id]  & chr(124) &  [comm_band]  & chr(124) &  [Address]  & chr(124) &  Str( [Preferred_Contact_Method] ) & chr(124) &  [Street]  & chr(124) &  [agent_tel]  & chr(124) &  [City]  & chr(124) &  [agent_email]  & chr(124) &  [Country]  & chr(124) &  [mobile_no]  & chr(124) &  [agent_fax]  & chr(124) &  [bank_name]  & chr(124) &  [Region]  & chr(124) &  [sales_initial]  & chr(124) &  [sales_title]  & chr(124) &  [sales_surname]  & chr(124) &  [web_site_address]  & chr(124) &  [Postal_Code] 
+            string values = "0|-1|0|RJA|0|Eng|-1|0|0|0|-1|0|RJA|02|Floor 2, 3 ,4| 1|Dunbar House, 14 Georges Quay|4703299|Cork|andrew.duggan@rja.ie|Ireland|086 6070038|4703298|||||||";
+            string json = JSON.encode(table.parseSnapshotFieldListValues(values, 1));
+            System.IO.File.WriteAllText(App.deltaPath + "\\delta.json", json);
         }
     }
 }

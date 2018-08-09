@@ -61,5 +61,11 @@ namespace Monitor
             }
         }
 
+        override public object parseSqlValue(string sqlValue)
+        {
+            //if (sqlValue.Length == 0) return sqlValue;  // what is the default date???
+            return DateTime.Parse(sqlValue);    // need to be careful
+        }
+
     }
 }

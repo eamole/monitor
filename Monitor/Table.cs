@@ -40,12 +40,14 @@ namespace Monitor   // possibly should be Db
         // TODO : need the ID as well - should maybe create an FieldList object with ID and the actual list
         public string[] fieldLists;
         public int[] fieldListIds;  // hack
+        public int[][] fieldListOrdinals;   // array of ordinals for each field in each list
 
 
 
         public int newRecordCount;  // a storage area for a recCount when checking for new recrods
 
         public Dictionary<string, Field> fields;
+        public Field[] _fields; 
         
         public Table(Db _db, string _name)
         {
@@ -176,6 +178,13 @@ namespace Monitor   // possibly should be Db
                 Field.fromSnapshot(this, reader);
             }
             reader.Close();
+
+            _fields = new Field[fields.Count];
+            foreach(KeyValuePair<string,Field> _field in fields)
+            {
+                Field field = _field.Value;
+                _fields[field.ordinal - 1] = field;
+            }
         }
 
 
@@ -238,15 +247,22 @@ namespace Monitor   // possibly should be Db
             string delim = "\"";   // use a special char as delim
             sql = delim;
             bool written=false;
+            string fieldListOrdinals = "";       // need to record the actual fields in each list
             while (reader.Read())
             {
                 written = false;
                 Field field = Field.fromSnapshot(table, reader);
                 field.fieldList = fieldList;
 
-                if (i++ > 0) sql += $" & {App.fieldListSeparator} & ";  // 
-                                                                        // if there are no records, return 0 not Null
+                if (i++ > 0)
+                {
+                    sql += $" & {App.fieldListSeparator} & ";  // 
+                    fieldListOrdinals += ",";
+                }                                                       // if there are no records, return 0 not Null
                                                                         //sql += $"'{field.name} :' ";
+
+                fieldListOrdinals += field.ordinal;
+
                 if (field.isString)
                     sql += $" [{field.name}] ";
                 if (field.isNumber)
@@ -255,17 +271,20 @@ namespace Monitor   // possibly should be Db
                     sql += $" Format([{field.name}],'yyyy-mm-dd hh:mm:ss') ";   // ' causes problems in expr string
                 if (field.isBool)
                     sql += $" [{field.name}] ";
+
+                // now break the list if at max
                 if (i == App.maxFieldListSize)
                 {
                     // break the list
                     // write the field list
                     sql += delim;
-                    App.snapshotDb.upsert("fieldLists", "tableId,ordinal,fieldList",
-                        $"|{table.id}|{fieldList}|{sql}",
+                    App.snapshotDb.upsert("fieldLists", "tableId,ordinal,fieldList,fieldListOrdinals",
+                        $"|{table.id}|{fieldList}|{sql}|'{fieldListOrdinals}'",
                         $"[tableId]={table.id} AND [ordinal]={fieldList}");
 
                     written = true;
                     sql = delim;
+                    fieldListOrdinals = "";
                     i = 0;
                     fieldList++;
                 }
@@ -274,8 +293,8 @@ namespace Monitor   // possibly should be Db
             if (!written)
             {     // write last fieldList 
                 sql += delim;
-                App.snapshotDb.upsert("fieldLists", "tableId,ordinal,fieldList",
-                $"|{table.id}|{fieldList}|{sql}",
+                App.snapshotDb.upsert("fieldLists", "tableId,ordinal,fieldList,fieldListOrdinals",
+                $"|{table.id}|{fieldList}|{sql}|'{fieldListOrdinals}'",
                 $"[tableId]={table.id} AND [ordinal]={fieldList}");
             }
             reader.Close();
@@ -285,15 +304,21 @@ namespace Monitor   // possibly should be Db
 
         public string[] getFieldLists()
         {
+            // short circuit
+            if (fieldLists != null) return fieldLists;
+
             Snapshot db = App.snapshotDb;
             int count = db.recCount("fieldLists", $"[tableId]={id}");
             fieldLists = new string[count];
             fieldListIds = new int[count];
+            fieldListOrdinals = new int[count][];
             OleDbDataReader reader = db.query("fieldLists", $"[tableId]={id}", "ordinal");
             int i = 0;
             while (reader.Read())
             {
                 fieldLists[i] = reader.GetValue(reader.GetOrdinal("fieldList")).ToString();
+                string _fieldListOrdinals = reader.GetValue(reader.GetOrdinal("fieldListOrdinals")).ToString();
+                fieldListOrdinals[i] = Array.ConvertAll(_fieldListOrdinals.Split(','),int.Parse);
                 fieldListIds[i++] = int.Parse(reader.GetValue(reader.GetOrdinal("id")).ToString());
             }
             return fieldLists;
@@ -442,8 +467,90 @@ namespace Monitor   // possibly should be Db
             }
             return ids;
         }
+        /*
+         * parse out the sql encoded values of the field list
+         * into a Dict, converting values to C# values
+         * valueString is the values as an sql string
+         * ordinal is the number of the field list
+         */
+        public Dictionary<string,object> parseSnapshotFieldListValues(string valueString,int ordinalFieldList)
+        {
+            Dictionary<string, object> values = new Dictionary<string, object>();
 
-        public static Query checkForDeletes(string tableName)
+            getFieldLists();    // make sure they're loaded
+
+            string[] _valueStrings = valueString.Split(App.fieldListSeparatorChar);
+            object[] _values = new object[_valueStrings.Length];
+            int[] ordinals = fieldListOrdinals[ordinalFieldList-1];
+
+            for (int i=0;i<_valueStrings.Length;i++)
+            {
+                string _value = _valueStrings[i];
+                int ordinal = ordinals[i];  // the field ordinal
+                Field field = _fields[ordinal-1];
+                object value = field.parseSqlValue(_value);
+
+                values.Add(field.name, value);
+            }
+
+
+            return values;
+        }
+
+
+
+        public int processDeltas(int statsId)
+        {
+
+            App.log("load values for delta batch");
+            string sql = $@"SELECT * FROM [snapshotValues] AS sv 
+                        INNER JOIN [tables] 
+                        ON
+                            sv.[tableId]=[tables].[id]
+                        WHERE sv.[statsId]={statsId} AND [op]='u'
+                        ORDER BY [_id],[op]
+                    ;";
+            Query query = Query.reader(App.allDb, sql);
+            int i = 0;
+
+            while (query.read())
+            {
+                string op = query.get("op");
+                int _id = query.getInt("_id");   // the object id
+                int ordinal = query.getInt("ordinal");
+                string current = query.get("current");
+                string old = query.get("old");    // previous value
+
+                string[] _oldValues = old.Split(App.fieldListSeparatorChar);
+                Dictionary<string, object> currentValues = parseSnapshotFieldListValues(current,ordinal);
+                if (op=="u")
+                {
+                            
+
+
+                } else if(op=="i")
+                {
+
+                } else if(op=="d")
+                {
+
+                } else
+                {
+
+                }
+                i++;
+            }
+
+            if(i==0)
+            {
+                App.log("no records in delta batch");
+                return 0;
+            }
+            return i;
+
+        }
+
+        public static Query checkForDeletes(int queueId,string tableName)
         {
 
             Db db = App.allDb;
@@ -501,9 +608,9 @@ namespace Monitor   // possibly should be Db
                 query.rowsAffected = db.recCount("snapshot", $"statsId = {statsId}");
 
                 sql = $@"INSERT INTO queueStats 
-                            ([tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
+                            ([queueId],[tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
                            VALUES
-                            ({table.id},'d',{statsId},#{query.getStart()}#,#{query.getEnd()}#,
+                            ({queueId},{table.id},'d',{statsId},#{query.getStart()}#,#{query.getEnd()}#,
                                 {query.getDuration()},{query.rowsAffected},{table.recCount},'{query.errorMsg}')
                     ;";
 
@@ -517,7 +624,7 @@ namespace Monitor   // possibly should be Db
 
 
 
-        public static void checkForUpdates(string tableName)
+        public static void checkForUpdates(int queueId,string tableName)
         {
 
             Db db = App.allDb;
@@ -585,9 +692,9 @@ namespace Monitor   // possibly should be Db
             int rowsAffected = db.recCount("snapshotValues", $"statsId = {statsId}");
             App.log("update stats");
             sql = $@"INSERT INTO queueStats 
-                            ([tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
+                            ([queueId],[tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
                            VALUES
-                            ({table.id},'u',{statsId},#{timing.getStart()}#,#{timing.getEnd()}#,
+                            ({queueId},{table.id},'u',{statsId},#{timing.getStart()}#,#{timing.getEnd()}#,
                                 {timing.getDuration()},{rowsAffected},{table.recCount},'{errMsg}')
                     ;";
 
@@ -602,7 +709,7 @@ namespace Monitor   // possibly should be Db
          * change so that snapshotValues holds the actual data - 1 rec pre fieldlist
          * this makes updates eaaier to detect
          */
-        public static void checkForInserts(string tableName) 
+        public static void checkForInserts(int queueId,string tableName) 
         {
 
             Db db = App.allDb;
@@ -707,9 +814,9 @@ namespace Monitor   // possibly should be Db
                 query.rowsAffected = db.recCount("snapshotValues", $"statsId = {statsId}");
 
                 sql = $@"INSERT INTO queueStats 
-                            ([tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
+                            ([queueId],[tableId],[op],[statsId],[start],[end],[duration],[records],[recCount],[errorMsg])
                            VALUES
-                            ({table.id},'i',{statsId},#{query.getStart()}#,#{query.getEnd()}#,
+                            ({queueId},{table.id},'i',{statsId},#{query.getStart()}#,#{query.getEnd()}#,
                                 {query.getDuration()},{query.rowsAffected},{table.recCount},'{query.errorMsg}')
                     ;";
 
@@ -719,8 +826,8 @@ namespace Monitor   // possibly should be Db
                 i++;    //next field list
             }
 
-            int count = db.recCount("snapshot", $"statsId={statsId}");
-            return ;
+            //int count = db.recCount("snapshot", $"statsId={statsId}");
+            //return ;
 
         }
 

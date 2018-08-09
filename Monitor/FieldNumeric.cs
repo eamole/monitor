@@ -33,5 +33,22 @@ namespace Monitor
             decimals = int.Parse(reader.GetValue(reader.GetOrdinal("decimals")).ToString());
             isNumber = true;
         }
+
+        /*
+        * this will cause problems based on whether int or float
+        */
+        override public object parseSqlValue(string sqlValue)
+        {
+            //if (sqlValue.Length == 0) sqlValue = "0";   // give it a default numeric value
+            if (decimals==0)
+            {
+                return int.Parse(sqlValue);
+            } else
+            {
+                return double.Parse(sqlValue);
+            }
+        }
     }
+    
+
 }

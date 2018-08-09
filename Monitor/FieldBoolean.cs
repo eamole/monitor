@@ -28,5 +28,15 @@ namespace Monitor
             if (hasDefault) defaultValue = bool.Parse(defaultValueString);
 
         }
+
+        override public object parseSqlValue(string sqlValue)
+        {
+            //            if (sqlValue.Length == 0) return false;
+            if (sqlValue == "0") return false;
+            else if (sqlValue == "-1") return true;
+            else throw new Exception($"Invalid sql boolean type value {sqlValue}");
+            return bool.Parse(sqlValue);
+        }
+
     }
 }

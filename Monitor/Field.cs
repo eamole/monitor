@@ -8,7 +8,7 @@ using System.Data.OleDb;
 
 namespace Monitor
 {
-    class Field
+    abstract class Field
     {
         public int id;
         public int tableId;
@@ -194,6 +194,10 @@ namespace Monitor
 
             return field;
         }
+
+        // this needs to e overridden
+        abstract public object parseSqlValue(string sqlValue);
+
 
         public void save()
         {

@@ -98,13 +98,13 @@ namespace Monitor
                 table.getRecCount();
                 // need to retain the query objects
                 App.log("look for updates " + tableName);
-                Table.checkForUpdates(tableName);                
+                Table.checkForUpdates(id,tableName);                
                 
                 App.log("look for inserts " + tableName);
-                Table.checkForInserts(tableName);
+                Table.checkForInserts(id,tableName);
 
                 App.log("look for deletes " + tableName);
-                Table.checkForInserts(tableName);
+                Table.checkForInserts(id,tableName);
 
                 // only on success
                 App.log("move this table to next run");

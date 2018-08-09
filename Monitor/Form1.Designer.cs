@@ -43,6 +43,8 @@
             this.dgvStats = new System.Windows.Forms.DataGridView();
             this.tabData = new System.Windows.Forms.TabPage();
             this.dgvData = new System.Windows.Forms.DataGridView();
+            this.tabHigh = new System.Windows.Forms.TabPage();
+            this.dataGridView1 = new System.Windows.Forms.DataGridView();
             this.label3 = new System.Windows.Forms.Label();
             this.btnReadMetadata = new System.Windows.Forms.Button();
             this.btnComputeFieldStats = new System.Windows.Forms.Button();
@@ -52,8 +54,8 @@
             this.btnGenFieldLists = new System.Windows.Forms.Button();
             this.button1 = new System.Windows.Forms.Button();
             this.btnStartMonitor = new System.Windows.Forms.Button();
-            this.tabHigh = new System.Windows.Forms.TabPage();
-            this.dataGridView1 = new System.Windows.Forms.DataGridView();
+            this.button2 = new System.Windows.Forms.Button();
+            this.button3 = new System.Windows.Forms.Button();
             this.tabs.SuspendLayout();
             this.tabTables.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dgvTables)).BeginInit();
@@ -224,6 +226,27 @@
             this.dgvData.Size = new System.Drawing.Size(722, 334);
             this.dgvData.TabIndex = 0;
             // 
+            // tabHigh
+            // 
+            this.tabHigh.Controls.Add(this.dataGridView1);
+            this.tabHigh.Location = new System.Drawing.Point(4, 22);
+            this.tabHigh.Name = "tabHigh";
+            this.tabHigh.Padding = new System.Windows.Forms.Padding(3);
+            this.tabHigh.Size = new System.Drawing.Size(728, 340);
+            this.tabHigh.TabIndex = 4;
+            this.tabHigh.Text = "High";
+            this.tabHigh.UseVisualStyleBackColor = true;
+            // 
+            // dataGridView1
+            // 
+            this.dataGridView1.AllowUserToOrderColumns = true;
+            this.dataGridView1.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+            this.dataGridView1.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.dataGridView1.Location = new System.Drawing.Point(3, 3);
+            this.dataGridView1.Name = "dataGridView1";
+            this.dataGridView1.Size = new System.Drawing.Size(722, 334);
+            this.dataGridView1.TabIndex = 1;
+            // 
             // label3
             // 
             this.label3.AutoSize = true;
@@ -311,32 +334,33 @@
             this.btnStartMonitor.UseVisualStyleBackColor = true;
             this.btnStartMonitor.Click += new System.EventHandler(this.btnStartMonitor_Click);
             // 
-            // tabHigh
+            // button2
             // 
-            this.tabHigh.Controls.Add(this.dataGridView1);
-            this.tabHigh.Location = new System.Drawing.Point(4, 22);
-            this.tabHigh.Name = "tabHigh";
-            this.tabHigh.Padding = new System.Windows.Forms.Padding(3);
-            this.tabHigh.Size = new System.Drawing.Size(728, 340);
-            this.tabHigh.TabIndex = 4;
-            this.tabHigh.Text = "High";
-            this.tabHigh.UseVisualStyleBackColor = true;
+            this.button2.Location = new System.Drawing.Point(621, 4);
+            this.button2.Name = "button2";
+            this.button2.Size = new System.Drawing.Size(104, 23);
+            this.button2.TabIndex = 18;
+            this.button2.Text = "Check Deltas";
+            this.button2.UseVisualStyleBackColor = true;
+            this.button2.Click += new System.EventHandler(this.button2_Click);
             // 
-            // dataGridView1
+            // button3
             // 
-            this.dataGridView1.AllowUserToOrderColumns = true;
-            this.dataGridView1.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            this.dataGridView1.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.dataGridView1.Location = new System.Drawing.Point(3, 3);
-            this.dataGridView1.Name = "dataGridView1";
-            this.dataGridView1.Size = new System.Drawing.Size(722, 334);
-            this.dataGridView1.TabIndex = 1;
+            this.button3.Location = new System.Drawing.Point(731, 4);
+            this.button3.Name = "button3";
+            this.button3.Size = new System.Drawing.Size(104, 23);
+            this.button3.TabIndex = 19;
+            this.button3.Text = "Check Delta";
+            this.button3.UseVisualStyleBackColor = true;
+            this.button3.Click += new System.EventHandler(this.button3_Click);
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(800, 450);
+            this.ClientSize = new System.Drawing.Size(907, 450);
+            this.Controls.Add(this.button3);
+            this.Controls.Add(this.button2);
             this.Controls.Add(this.btnStartMonitor);
             this.Controls.Add(this.button1);
             this.Controls.Add(this.btnGenFieldLists);
@@ -399,6 +423,8 @@
         private System.Windows.Forms.Button btnStartMonitor;
         private System.Windows.Forms.TabPage tabHigh;
         private System.Windows.Forms.DataGridView dataGridView1;
+        private System.Windows.Forms.Button button2;
+        private System.Windows.Forms.Button button3;
     }
 }
 

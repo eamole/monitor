@@ -17,16 +17,26 @@ namespace Monitor
         public static int maxFieldListSize = 30;
         public static int maxIdArraySize = 500;
         public static string fieldListSeparator = "chr(124)";   // its a sql function
+        public static char fieldListSeparatorChar = (char) 124; // should be pipe |
+
         // used in a value list to denote an sql string or any struing that should be parameterised in a query
         public static char sqlStringValueMarker = '~';
         public static char sqlStringValueDelim = '~';
         public static string dateMask = "yyyy-MM-dd";  
         public static string timeMask = "HH:mm:ss"; // 24 hour clock
+        public static string dateTimeMask = dateMask + "T" + timeMask + "Z";    // ISO std good for JSON 
+        
         // the 3 dbs in the set
         public static Db originalDb;
         public static Snapshot snapshotDb;
         public static Db loggerDb;
         public static Snapshot allDb; // all tables linked
+
+        public static string appPath;
+        public static string dataPath;      // set by Snapshot - really should be set afetr selecting the database
+        public static string deltaPath;      // set by Snapshot
+
+
 
         public static void init()
         {
@@ -45,7 +55,11 @@ namespace Monitor
         public static void error(string msg)
         {
             Console.WriteLine("Error : " + msg);    // send email
+            App.loggerDb.insert("errors", "errMsg", $"'{msg}'");
         }
+
+
+
 
 
     }

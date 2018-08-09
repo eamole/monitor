@@ -21,6 +21,11 @@ namespace Monitor
         {
             // need to extract the mdb first from filename
 
+            App.dataPath = Path.GetDirectoryName(filename);
+            // create necessary paths for deltas
+            App.deltaPath = App.dataPath + "\\deltas";
+            System.IO.Directory.CreateDirectory(App.deltaPath); 
+
             string _filename = Path.GetFileNameWithoutExtension(filename);
             string snapshotFileName = Path.GetDirectoryName(filename) + "\\" +  _filename + "_snapshot.mdb";
             string originalFileName = filename;
@@ -132,12 +137,60 @@ namespace Monitor
             }
         }
 
+        public static void checkForDeltas()
+        {
+
+            // each run must rerember the batchId processed
+
+            // get next batch
+            App.log("get last delta batch");
+            string sql = $@"SELECT TOP 1 * FROM [deltas] ORDER BY id DESC ;";
+            Query query = Query.reader(App.allDb, sql);
+            int lastStatsId = 0;
+            if (query.read())
+            {
+                lastStatsId = query.getInt("statsId");
+                App.log($"last batch : {lastStatsId}");
+            }
+
+            App.log("get next delta batch");
+            sql = $@"SELECT TOP 1 * FROM [snapshotValues] AS sv
+                        INNER JOIN [tables]
+                        ON
+                            sv.[tableId]=[tables].[id]
+                        WHERE [statsId]>{lastStatsId} ORDER BY [statsId] ASC;";
+
+            query = Query.reader(App.allDb, sql);
+            if (query.read())
+            {
+                int nextStatsId = query.getInt("statsId");
+                string tableName = query.get("name");
+                string op = query.get("op");
+                Table table = App.allDb.tables[tableName];
+                App.log($"next batch : {nextStatsId}");
+                int records = table.processDeltas(nextStatsId);
+                // on success
+                sql = $@"INSERT INTO [deltas] 
+                            ([statsId],[op],[records])
+                        VALUES
+                            ({nextStatsId},'{op}',{records})
+                        ;";
+                App.snapshotDb.run(sql);
+            } else
+            {
+                App.log("no pending deltas");
+                return;
+            }
+
+
+        }
+            // do not use
         public void checkForInserts()
         {
             foreach (KeyValuePair<string, Table> entry in tables)
             {
                 Table table = entry.Value;
-                Table.checkForInserts(table.name);
+                Table.checkForInserts(1,table.name);
             }
 
         }
